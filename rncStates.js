@@ -12,7 +12,7 @@ networkEvents.log("Network packet of size ")
 
 
 function moreThanThreshold (val) {
-	return val >= threshold;
+  return val >= threshold;
 }
 function lessThanThreshold (val) {
 	return val < threshold;
@@ -27,8 +27,8 @@ function lessThanThreshold (val) {
 // since the last time there was no packet at all for longer than DCH demotion time
 // (even smaller packets reset the timer when already in DCH)
 var isDCH = networkEvents.filter(moreThanThreshold)
-						 .awaiting(networkEvents.debounce(demotionTimerDCH))
-						 .skipDuplicates()
+                        .awaiting(networkEvents.debounce(demotionTimerDCH))
+                        .skipDuplicates()
 
 // Changes from DCH = true to DCH = false indicate a demotion to FACH
 var demotedToFACH = isDCH.changes().filter(function (val) { return !val}).not()
@@ -36,47 +36,48 @@ var demotedToFACH = isDCH.changes().filter(function (val) { return !val}).not()
 // Packets forcing/refreshing FACH state are the ones that are smaller than a threshold
 // and are sent when the radio is NOT in DCH state (otherwise it stays in DCH)
 var refreshedFACH = networkEvents.filter(lessThanThreshold)
-								 .filter(isDCH.not())
-								 .map(function() { return true})
+                                .filter(isDCH.not())
+                                .map(function() { return true})
 
 var promotionFromFACH = isDCH.changes()
-							 .filter(function(val) { return val })
-							 .not()
+                            .filter(function(val) { return val })
+                            .not()
 
 // For each change into FACH state fire a timer even after the demotion timeout
 // Using flatMapLatest if FACH is refreshed by another packet, only the latest timeout will count
 // Also merge promotions to DCH to cancel the FACH timers if there are any
-var FACHtimers = refreshedFACH.merge(demotedToFACH).merge(promotionFromFACH)
-							 .flatMapLatest(function (v) {
-							 	if (v == true)
-							 		return Bacon.later(demotionTimerFACH, true)
-							 	else
-							 		return Bacon.never()
-							 })
+var FACHtimers = refreshedFACH.merge(demotedToFACH)
+                              .merge(promotionFromFACH)
+                              .flatMapLatest(function (v) {
+                                if (v == true)
+                                  return Bacon.later(demotionTimerFACH, true)
+                                else
+                                  return Bacon.never()
+                              })
 
 var transitionsFACH = new Bacon.mergeAll([demotedToFACH, 
-										  refreshedFACH, 
-										  promotionFromFACH,
-										  FACHtimers.not()])
+                                          refreshedFACH, 
+                                          promotionFromFACH,
+                                          FACHtimers.not()])
 
 var isFACH = transitionsFACH.toProperty()
 
 // The state is IDLE if FACH demotion timer has fired
 var isIDLE = isDCH.not()
-				  .and(isFACH.not())
-				  .debounce(1)			// Allow a bit of time for changes to DCH and FACH affect each other
-				  .skipDuplicates()
+                  .and(isFACH.not())
+                  .debounce(1)			// Allow a bit of time for changes to DCH and FACH affect each other
+                  .skipDuplicates()
 
 var stateTransitions = isDCH.changes()
-							.flatMap(function (v) { 
-								if (v) return "DCH"; else return Bacon.never(); 
-							})
-							.merge(isFACH.changes().flatMap(function (v) {
-								if (v) return "FACH"; else return Bacon.never(); 	
-							}))
-							.merge(isIDLE.changes().flatMap(function (v) {
-								if (v) return "IDLE"; else return Bacon.never(); 	
-							}))
+                            .flatMap(function (v) { 
+                              if (v) return "DCH"; else return Bacon.never(); 
+                            })
+                            .merge(isFACH.changes().flatMap(function (v) {
+                              if (v) return "FACH"; else return Bacon.never(); 	
+                            }))
+                            .merge(isIDLE.changes().flatMap(function (v) {
+                              if (v) return "IDLE"; else return Bacon.never(); 	
+                            }))
 
 stateTransitions.log("Radio state: ")
 
