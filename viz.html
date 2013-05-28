@@ -1,0 +1,148 @@
+<html>
+  <head>
+  	<title>Bacon</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+
+    <style>
+      html, body {
+        margin:0;
+        border:0;
+        padding:0;
+      }
+      div.centered {
+        margin:auto;
+        font-size:40px;
+        width:20em; /* So we get about 10 words per line */
+      }
+
+      div.centered input {
+        font-size: 30px;
+      }
+      .slideCount {
+        position: absolute;
+        bottom: 1em;
+        right: 1em;
+      }
+      
+      svg {
+        font-size: 25px!important;
+      }
+
+      console { 
+        position: relative;
+      }
+      console pre {
+        line-height: 1.2em;
+        overflow-y: scroll;
+        height: 6em;
+        margin-top: 4em;
+        font-size: 16px;
+        position: relative;
+     }
+      
+      console:before {
+        font-family: Yanone Kaffeesatz;
+        font-size: 30px;
+        content: 'console';
+        position: absolute;
+        top: -1.25em;
+        left: 0.1em;
+        opacity: 0.75;
+      }
+
+      #available:before {
+        content: '✻ ';
+        color: coral;
+        display: inline-block;
+        -webkit-transform-origin: 50% 50%;
+        -webkit-animation: rotation 2s infinite linear;
+        visibility: hidden;
+      }
+      #available.waiting:before {
+        visibility: visible;
+      }
+
+      @-webkit-keyframes rotation {
+        from { -webkit-transform: rotate(0deg); }
+        to { -webkit-transform: rotate(359deg); }
+      }
+
+      body {
+        font-family: Yanone Kaffeesatz, Helvetica Neue, Helvetica, sans;
+      }
+
+      svg {
+        background: #EEEEFF;
+        width: 600px;
+        height: 80px;
+        margin-top: 20px;
+        font-size: small; }
+
+      svg line {
+        stroke: #000;
+        stroke-width: 1;
+      }
+
+
+      /* My styling here */
+     /* End styling */
+    </style>
+
+<body>
+    <div class="bg">&nbsp;</div>
+    <script src="lib/jquery.js"></script>
+    <script src="lib/Bacon.js"></script>
+    <script src="lib/Bacon.UI.js"></script>
+    <script src="lib/d3.min.js"></script>
+    <script src="baconViz.js"></script>
+
+
+    <div class="centered">
+    <h1 id="title">Network packets and RNC states</h1>
+    <style> button { font-size: 20px; } </style>
+
+    <div>
+      Generate packet: 
+      <button id="smallPacket">100B</button>
+      <button id="largePacket">1000B</button>
+      <br />
+      Radio state: <span id="rncState"></span>
+    </div>
+
+    <a href="#" style="opacity: 0">foo</a>
+
+    <div data-stream="networkEvents" data-title="Packets" class="stream">
+    </div>
+    <div data-stream="stateTransitions" data-title="RNC States" class="stream">
+    </div>
+
+    </div>
+
+    <script src="rncStates.js"></script>
+
+    <script>
+      jQuery('input').keydown(function(ev) {
+        ev.stopPropagation()
+      })
+
+      var smallPackets = $('#smallPacket').asEventStream('click').map(100)
+      var largePackets = $('#largePacket').asEventStream('click').map(1000)
+
+      packets = largePackets.merge(smallPackets)
+      networkEvents.plug(packets)
+
+      stateTransitions.log()
+      stateTransitions.assign($('#rncState'), 'text');
+
+      jQuery('[data-stream]').each(function() {
+        var unbind = drawStream(
+          jQuery(this)[0],
+          jQuery(this).data('title'),
+          window[jQuery(this).data('stream')]
+        );
+      });
+      
+    </script>
+</body>
+</html>

@@ -1,4 +1,24 @@
-Bacon = require('baconjs')
+var isNode = false;
+(function () {
+    // Establish the root object, `window` in the browser, or `global` on the server.
+    var root = this; 
+    // Create a refeence to this
+    var _ = new Object();
+
+    // Export the Underscore object for **CommonJS**, with backwards-compatibility
+    // for the old `require()` API. If we're not in CommonJS, add `_` to the
+    // global object.
+    if (typeof module !== 'undefined' && module.exports) {
+            module.exports = _;
+            root._ = _;
+            isNode = true;
+    } else {
+            root._ = _;
+    }
+})();
+
+if (isNode)
+  Bacon = require('baconjs')
 
 // Packet size threshold forcing to DCH mode
 var threshold = 500;
