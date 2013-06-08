@@ -36,13 +36,19 @@ function filterTweets (message) {
 
 function removeTweetUserInfo (tweet) {
     var newTweet = _.clone(tweet);
-    if (tweet.hasOwnProperty('user')) {
+    if (_.has(tweet, 'user') && _.has(tweet['user'], 'id_str')) {
         newTweet['user_id_str'] = tweet['user']['id_str'];
         newTweet['user'] = null;
     }
-    if (tweet.hasOwnProperty('retweeted_status')) {
+    return newTweet;
+}
+
+function cleanupRetweet (tweet) {
+    var newTweet = _.clone(tweet);
+    if (_.has(tweet, 'retweeted_status')) {
         newTweet['retweeted_status']['user_id_str'] = tweet['retweeted_status']['id_str'];
         newTweet['retweeted_status']['user'] = null;
+        newTweet['retweeted_status'] = cleanupTweet(tweet['retweeted_status']);
     }
     return newTweet;
 }
@@ -84,6 +90,7 @@ var events = twitterEvents.filter(filterEvents)//.log("Event:")
 // Tweets themselves, with unnecessary information removed
 var tweets = twitterEvents.filter(filterTweets)
                           .map(cleanupTweet)
+                          .map(cleanupRetweet)
                           .map(prettyjson.render).log("Tweet:")
 
 // A stream of compressed tweets as strings, at the moment just to compare size savings
@@ -91,7 +98,7 @@ var compressed = tweets.flatMap(function(v){
                             return Bacon.fromNodeCallback(zlib.deflate, v)      // deflate using zlib
                         })
                         .map(function (b) { return b.toString() })          // convert to a string
-                        // .log("Zipped:")
+                        .map(".length").log("Zipped length:")
 
 var retweetUserInfo = twitterEvents.filter(filterTweets)
                                     .flatMap(function(tweet){
