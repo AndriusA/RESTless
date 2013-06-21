@@ -1,70 +1,15 @@
-// var isNode = false;
-// (function () {
-//     // Establish the root object, `window` in the browser, or `global` on the server.
-//     var root = this; 
-//     // Create a refeence to this
-//     var _ = new Object();
-
-//     // Export the Underscore object for **CommonJS**, with backwards-compatibility
-//     // for the old `require()` API. If we're not in CommonJS, add `_` to the
-//     // global object.
-//     if (typeof module !== 'undefined' && module.exports) {
-//             module.exports = _;
-//             root._ = _;
-//             isNode = true;
-//     } else {
-//             root._ = _;
-//     }
-// })();
-
-// if (isNode) {
-//     var Bacon = require('baconjs')
-//     var Stream = require('user-stream');
-//     var prettyjson = require('prettyjson');
-//     var zlib = require('zlib');
-//     var _ = require('underscore');
-// }
-
 // List of friends of a user, only seen sent at the beginning of the session
 // var friends = twitterEvents.filter(filterFriendsLists)//.log("Friends:");
 // var directMessages = twitterEvents.filter(filterDirectMessages)//.log("DM:");
 // Events include follows, unfollows, favorites, retweets, etc.
 // var events = twitterEvents.filter(filterEvents)//.log("Event:")
 
-// Tweets themselves, with unnecessary information removed
-// var tweets = twitterEvents.filter(filterTweets)
-//     .map(cleanupTweet)
-//     .map(cleanupRetweet)
-//     .map(prettyjson.render).log("Tweet:")
-
-// if (!_.isNull(zlib)) {
 //     // A stream of compressed tweets as strings, at the moment just to compare size savings
 //     var compressed = tweets.flatMap(function(v){
 //             return Bacon.fromNodeCallback(zlib.deflate, v)      // deflate using zlib
 //         })
 //         .map(function (b) { return b.toString() })          // convert to a string
 //         .map(".length").log("Zipped length:")
-// }
-
-// var retweetUserInfo = twitterEvents.filter(filterTweets)
-//     .flatMap(function(tweet){
-//         // Is a retweet
-//         if (tweet.hasOwnProperty('retweeted_status'))
-//             return Bacon.once(_.clone(tweet['retweeted_status']['user']))
-//         else
-//             return Bacon.never();
-//     })
-// var tweetUserInfo = twitterEvents.filter(filterTweets)
-//     .map(function(tweet) { return _.clone(tweet['user']) })
-// var followUserInfo = events.filter(function (event) { 
-//         return _.where([event], {'event': 'follow' }) 
-//     })
-//     .map(function (follow) { return _.clone(follow['target']) })
-
-// // User info as obtained from 'follow' events and tweets - 
-// // no need to include in every message, so collect and process separately
-// var userInfo = Bacon.mergeAll([followUserInfo, tweetUserInfo, retweetUserInfo]);
-//                      // .map(prettyjson.render).log("userInfo:")
 
 $(function() {
     function nonEmpty(xs) {
