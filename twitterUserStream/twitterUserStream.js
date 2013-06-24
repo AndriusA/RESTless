@@ -1,16 +1,3 @@
-// List of friends of a user, only seen sent at the beginning of the session
-// var friends = twitterEvents.filter(filterFriendsLists)//.log("Friends:");
-// var directMessages = twitterEvents.filter(filterDirectMessages)//.log("DM:");
-// Events include follows, unfollows, favorites, retweets, etc.
-// var events = twitterEvents.filter(filterEvents)//.log("Event:")
-
-//     // A stream of compressed tweets as strings, at the moment just to compare size savings
-//     var compressed = tweets.flatMap(function(v){
-//             return Bacon.fromNodeCallback(zlib.deflate, v)      // deflate using zlib
-//         })
-//         .map(function (b) { return b.toString() })          // convert to a string
-//         .map(".length").log("Zipped length:")
-
 $(function() {
     function nonEmpty(xs) {
         return !_.isEmpty(xs)
@@ -26,6 +13,11 @@ $(function() {
                 o[k] = compactObject(v)
         })
         return o;
+    }
+
+    // FIXME: Nasty hack, hardcoded
+    function isOwnID(id) {
+        return id === "82142104"
     }
 
     // VIEWS
@@ -48,7 +40,7 @@ $(function() {
             if (_.has(u, 'profile_image_url')) return u.profile_image_url
         })
 
-        tweetImage.log("image")
+        // tweetImage.log("image")
         userName.assign($userName, "text")
         userHandle.assign($userHandle, "text")
         tweetImage.assign($tweetImage, "attr", "src")
@@ -110,10 +102,44 @@ $(function() {
         }
 
         function addUser(user) {
-
             var view = UserView(user)
             listElement.prepend(view.element)
         }
+    }
+
+    function ConversationPreview(conversation) {
+        console.log("conversation", conversation)
+        var conversationTemplate = Handlebars.compile($("#conversation-template").html())
+        convPreview = {peer_id: conversation.peer_id, preview_message: conversation.messages[0]}
+        var conversationElement = $(conversationTemplate(convPreview))
+
+        return {
+            element: conversationElement
+        }
+    }
+
+    function ConversationListView(listElement, model, hash, selectedList) {
+        var repaint = Bacon.once()
+        repaint.map(selectedList).map(render)
+        model.allMessages.onValue(function(messages) {
+            render(messages)
+        })
+
+        function render (conversations) {
+            // console.log("render", conversations)
+            listElement.children().remove()
+            _.each(conversations, addConversation)
+        }
+
+        function addConversation (conv) {
+            // console.log("conv: ", conv)
+            var view = ConversationPreview(conv)
+            listElement.prepend(view.element)
+        }
+    }
+
+    function ChatView(listElement, model, hash) {
+
     }
 
     function FilterView(element, hash) {
@@ -125,11 +151,11 @@ $(function() {
         })
     }
 
-    function TweetCountView(element, hash, selectedList) {
+    function ItemCountView(element, hash, selectedList) {
         selectedList.onValue(render)
 
-        function render(tweets) {
-            Bacon.once(tweets).map(".length").map(function(count) {
+        function render(items) {
+            Bacon.once(items).map(".length").map(function(count) {
                 return "<strong>" + count + "</strong>" + ((count == 1) ? " item" : " items")
             }).assign(element, "html")
         }
@@ -186,12 +212,8 @@ $(function() {
         function addItem(newItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === newItem.id_str}).concat([newItem]) }}
         function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
         function retrieveItem(id) { return function(list) {return _.find(list, function(item){ return item.id_str == id}) }}
-        function filterDirectMessages (message) { return _.has(message, 'direct_message') }
         function filterFriendsLists (message) { return _.has(message, 'friends') }
         function filterEvents (message) { return _.has(message, 'event') }
-
-        // this.directMessages = new Bacon.Bus();
-        // this.userInfo = new Bacon.Bus();
 
         this.twitterEvents = new Bacon.Bus()
         this.tweets = new Bacon.Bus()
@@ -216,26 +238,59 @@ $(function() {
         // this.allUsers.log("user")
     }
 
+    function DMListModel() {
+        // Model Direct Messages as a list of dictionaries (conversations), identified by ID of "the other" peer
+        // [{peer_id, messages}, ...]
+        function addMessage(newMessage) { 
+            return function(list) {
+                var searchID = isOwnID(newMessage.sender_id_str) ? newMessage.recipient_id_str : newMessage.sender_id_str
+                // console.log("search:", searchID)
+                
+                if ( _.some(list, function (conv) { return conv.peer_id === searchID }) ) {
+                    var unchanged = _.reject(list, function(conv){ return conv.peer_id === searchID })
+                    var changed = _.map(_.where(list, function(conv){ return conv.peer_id === searchID }), 
+                        function(conv) { return {peer_id: conv.peer_id, messages: [newMessage].concat(conv.messages)} })
+                    return unchanged.concat(changed)
+                }
+                else
+                    return list.concat([ {peer_id: searchID, messages: [newMessage]} ])
+            }
+        }
+        // function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
+        // function retrieveItem(id) { return function(list) {return _.find(list, function(item){ return item.id_str == id}) }}
+        function filterDirectMessages (message) { return _.has(message, 'direct_message') }
+        function unwrap (message) { return message.direct_message }
+
+        this.twitterEvents = new Bacon.Bus();
+        this.directMessages = this.twitterEvents.filter(filterDirectMessages).map(unwrap).map(addMessage)
+        this.allMessages = this.directMessages.scan([], function(messages, f) { return f(messages) })
+    }
+
 
     function TwitterApp() {
         tweetsModel = new TweetListModel()
         usersModel = new UserListModel()
+        messagesModel = new DMListModel()
 
         var hash = Bacon.UI.hash("#/")
         FilterView($("#filters"), hash)
         var selectedList = hash.decode({
             "#/": tweetsModel.allTweets,
-            // "#/dm": [],     // Not yet implemented
+            "#/dm": messagesModel.allMessages,
             "#/users": usersModel.allUsers
         })
 
-        TweetCountView($("#tweet-count"), hash, selectedList)
+        ItemCountView($("#tweet-count"), hash, selectedList)
+
         hash.onValue(function (h) {
             console.log(h)
             if (h === "#/")
                 TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
             else if (h === "#/users")
                 UserListView($("#tweet-list"), usersModel, hash, selectedList)
+            else if (h === "#/dm")
+                // UserListView($("#tweet-list"), usersModel, hash, selectedList)
+                ConversationListView($("#tweet-list"), messagesModel, hash, selectedList)
         })
         
         // Connect to
@@ -248,9 +303,25 @@ $(function() {
         usersModel.twitterEvents.plug(tweetsModel.twitterEvents)
         usersModel.tweets.plug(tweetsModel.onlyTweets)
 
-        tweetsModel.allTweets.map(nonEmpty).assign($("#main,#footer"), "toggle")
+        messagesModel.twitterEvents.plug(tweetsModel.twitterEvents)
+
+        // tweetsModel.allTweets.map(nonEmpty).assign($("#main,#footer"), "toggle")
     }
 
     TwitterApp()
 
 })
+
+
+// List of friends of a user, only seen sent at the beginning of the session
+// var friends = twitterEvents.filter(filterFriendsLists)//.log("Friends:");
+// var directMessages = twitterEvents.filter(filterDirectMessages)//.log("DM:");
+// Events include follows, unfollows, favorites, retweets, etc.
+// var events = twitterEvents.filter(filterEvents)//.log("Event:")
+
+//     // A stream of compressed tweets as strings, at the moment just to compare size savings
+//     var compressed = tweets.flatMap(function(v){
+//             return Bacon.fromNodeCallback(zlib.deflate, v)      // deflate using zlib
+//         })
+//         .map(function (b) { return b.toString() })          // convert to a string
+//         .map(".length").log("Zipped length:")
