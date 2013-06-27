@@ -94,11 +94,9 @@ $(function() {
     }
 
     function ConversationPreview(conversation, peer) {
-        // console.log("conversation", conversation)
+        console.log("conversation", conversation)
         var conversationTemplate = Handlebars.compile($("#conversation-template").html())
-        // Create an "empty" element - will populate later and automatically as conversation property changes
-        convPreview = {peer_id: conversation.peer_id, preview_message: {}}
-        var conversationElement = $(conversationTemplate(convPreview))
+        var conversationElement = $(conversationTemplate(conversation))
 
         // Get the elements that are bound to properties dynamically
         var $message = conversationElement.find(".conversation .message-text")
@@ -111,7 +109,7 @@ $(function() {
         peer.map('.name').assign($userName, "text")
         peer.map('.screen_name').assign($userHandle, "text")
         peer.map('.profile_image_url').assign($tweetImage, "attr", "src")
-        conversation.property.map('.preview_message').map('.text').onValue(function (v) { $message.text(v) })
+        // conversation.preview_message.map('.text').onValue(function (v) { $message.text(v) })
         peer.map('.screen_name').assign($sender, "text")
 
         return {
@@ -123,31 +121,25 @@ $(function() {
     function ConversationListView(listElement, model, usersModel, hash, selectedList) {
         console.log("Conversation List View")
         var repaint = Bacon.once()
-        repaint.map(selectedList).log("selected").onValue(render)
-        model.addedConversations.onValue(addConversation)
         model.allMessages.onValue(render)
 
-        model.allMessages.onValue(function(v){
-            _.each(v, function(c) {
-                c.property.log("m?")
-            })
-        })
 
-        function render (conversations) {
-            console.log("render", conversations)
+        function render (messages) {
+            console.log("render", messages)
             listElement.children().remove()
-            _.each(conversations, addConversation)
+            _.each(_.groupBy(messages, 'conv_id'), addConversation)
         }
 
         function addConversation (conv) {
             console.log("add conversation", conv)
+            
             // Also get the user from the usersModel to bind to view dynamically
             get = usersModel.retrieveItem(conv.peer_id)
             var user = usersModel.allUsers.map(get)
             // conv.property.onValue(function(c) { console.log("aa", c) })
-            var view = ConversationPreview(conv, user)
+            var view = ConversationPreview(_.last(conv), user)
             listElement.prepend(view.element)
-            model.showConversation.plug(view.chosen.takeUntil(repaint).map(conv))
+            model.showConversation.plug(view.chosen.map(conv))
         }
     }
 
@@ -166,7 +158,9 @@ $(function() {
         hash.onValue(function(){ chatElement.addClass("invisible") })
 
         function selectConversation(conversation) {
-            conversation.property.log("property").map('.messages').log("m").onValue(render)    
+            console.log("conversation", conversation)    
+            render(conversation)
+            model.messageReceived.takeUntil(repaint).filter(function(message){ return message.peer_id === _.first(conversation).peer_id }).onValue(addMessage)
         }
 
         function render (messages) {
@@ -178,7 +172,7 @@ $(function() {
 
         function addMessage(message) {
             var view = MessageView(message)
-            listElement.prepend(view.element)
+            listElement.append(view.element)
         }
     }
 
@@ -292,47 +286,20 @@ $(function() {
 
     function DMListModel() {
         function matchConversation(peer_id, message) { return message.sender_id_str === peer_id || message.recipient_id_str === peer_id }
-        function prependItem(list, newItem) { return [newItem].concat(list) }
-        // Model Direct Messages as a list of dictionaries (conversations), identified by ID of "the other" peer
-        // [{peer_id, messages}, ...]
-        function addMessage(model, newMessage) { 
-            return function(list) {
-                var searchID = isOwnID(newMessage.sender_id_str) ? newMessage.recipient_id_str : newMessage.sender_id_str
-                // console.log("search:", searchID)
-                if ( _.every(list, function (conv) { return conv.peer_id !== searchID }) ) {
-                    var conversation = { peer_id: searchID, 
-                        property: Bacon.combineTemplate({
-                            peer_id: searchID,
-                            preview_message: DMs.filter(matchConversation, searchID).toProperty(),
-                            messages: DMs.filter(matchConversation, searchID).scan([newMessage], prependItem)
-                        })
-                    }
-                    console.log("adding new conversation")
-                    model.addedConversations.plug(Bacon.once(conversation))
-                    return list.concat([ conversation ])
-                }
-                return list
-            }
+        function addPeer(message) {
+            var peer_id = isOwnID(message.sender_id_str) ? message.recipient_id_str : message.sender_id_str
+            return _.extend(_.clone(message), {peer_id: peer_id})
         }
-        // function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
-        // function retrieveItem(id) { return function(list) {return _.find(list, function(item){ return item.id_str == id}) }}
+        function addMessage(newMessage) { return function(list) { return list.concat([ newMessage ]) }}
         function filterDirectMessages (message) { return _.has(message, 'direct_message') }
         function unwrap (message) { return message.direct_message }
 
         this.twitterEvents = new Bacon.Bus();
-        this.addedConversations = new Bacon.Bus();
         this.showConversation = new Bacon.Bus();
-
-        // this.showConversation.plug(this.addedConversations)
-
-        var DMs = this.twitterEvents.filter(filterDirectMessages).map(unwrap)
-        this.directMessages = DMs.map(addMessage, this)
-        this.allMessages = this.directMessages.scan([], function(messages, f) { return f(messages) })
-        // this.allMessages.onValue(function(v){
-        //     _.each(v, function(c) {
-        //         c.property.log("m?")
-        //     })
-        // })
+        
+        this.messageReceived = this.twitterEvents.filter(filterDirectMessages).map(unwrap).map(addPeer)
+        this.messageChanges = this.messageReceived.map(addMessage)
+        this.allMessages = this.messageChanges.scan([], function(messages, f) { return f(messages) })
     }
 
 

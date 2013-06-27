@@ -57,15 +57,15 @@
     <li id="{{peer_id}}">
       <div class="view conversation">
         <div class="user-header">
-             <span class="userName">{{preview_message.sender.name}}</span>
-             @<span class="userHandle">{{preview_message.sender.screen_name}}</span>
+             <span class="userName">{{sender.name}}</span>
+             @<span class="userHandle">{{sender.screen_name}}</span>
         </div>
-        <div class="user-avatar"><img src={{preview_message.sender.profile_image_url}} alt={{preview_message.sender.name}}></div>
+        <div class="user-avatar"><img src={{sender.profile_image_url}} alt={{sender.name}}></div>
             <span class="sender">
-                {{preview_message.sender_screen_name}}
+                {{sender_screen_name}}
             </span>:
             <span class="message-text">
-                {{preview_message.text}}
+                {{text}}
             </span>
         <div class="conversation-footer"></div>
       </div>
