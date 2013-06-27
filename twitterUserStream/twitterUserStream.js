@@ -77,9 +77,7 @@ $(function() {
         var repaint = Bacon.once()
         repaint.merge(Bacon.once()).map(selectedList).map(render)
 
-        model.allUsers.onValue(function(users) {
-            render(users)
-        })
+        model.userAdded.onValue(processUser)
 
         function render(users) {
             listElement.children().remove()
@@ -87,9 +85,14 @@ $(function() {
             _.each(users, addUser)
         }
 
+        function processUser(user) {
+            $("#"+user.id_str).remove()
+            addUser(user)
+        }
+
         function addUser(user) {
             var view = UserView(user)
-            listElement.prepend(view.element)
+            listElement.append(view.element)
         }
     }
 
@@ -279,8 +282,9 @@ $(function() {
         dmUserInfo = this.twitterEvents.filter(function (event) { return _.has(event, 'direct_message') })
             .flatMap(function (dm){ return Bacon.fromArray([dm.direct_message.sender, dm.direct_message.recipient]) })
 
-        this.userInfo = Bacon.mergeAll([followUserInfo, tweetUserInfo, retweetUserInfo, dmUserInfo]).map(addItem)
-        this.allUsers = this.userInfo.scan([], function(users, f) { return f(users) })
+        this.userAdded = Bacon.mergeAll([followUserInfo, tweetUserInfo, retweetUserInfo, dmUserInfo])
+        this.userChanges = this.userAdded.map(addItem)
+        this.allUsers = this.userChanges.scan([], function(users, f) { return f(users) })
         // this.allUsers.log("user")
     }
 
