@@ -30,20 +30,9 @@ $(function() {
         var $userHandle = $header.find(".userHandle")
         var $tweetImage = tweetElement.find(".tweetImage img")
 
-        userName = user.map(function (u){
-            if (_.has(u, 'name')) return u.name 
-        })
-        userHandle = user.map(function (u){
-            if (_.has(u, 'screen_name')) return u.screen_name 
-        })
-        tweetImage = user.map(function (u){
-            if (_.has(u, 'profile_image_url')) return u.profile_image_url
-        })
-
-        // tweetImage.log("image")
-        userName.assign($userName, "text")
-        userHandle.assign($userHandle, "text")
-        tweetImage.assign($tweetImage, "attr", "src")
+        user.map('.name').assign($userName, "text")
+        user.map('.scree_name').assign($userHandle, "text")
+        user.map('.profile_image_url').assign($tweetImage, "attr", "src")
 
         // console.log(tweetElement)
 
@@ -74,9 +63,6 @@ $(function() {
             // model.tweetDeleted.plug(view.destroy.takeUntil(repaint))
         }
 
-        function appendTweet(tweetView) {
-
-        }
     }
 
     function UserView(user) {
@@ -107,39 +93,93 @@ $(function() {
         }
     }
 
-    function ConversationPreview(conversation) {
-        console.log("conversation", conversation)
+    function ConversationPreview(conversation, peer) {
+        // console.log("conversation", conversation)
         var conversationTemplate = Handlebars.compile($("#conversation-template").html())
-        convPreview = {peer_id: conversation.peer_id, preview_message: conversation.messages[0]}
+        // Create an "empty" element - will populate later and automatically as conversation property changes
+        convPreview = {peer_id: conversation.peer_id, preview_message: {}}
         var conversationElement = $(conversationTemplate(convPreview))
 
+        // Get the elements that are bound to properties dynamically
+        var $message = conversationElement.find(".conversation .message-text")
+        var $sender = conversationElement.find(".conversation .sender")
+        var $userName = conversationElement.find(".conversation .user-header .userName")
+        var $userHandle = conversationElement.find(".conversation .user-header .userHandle")
+        var $tweetImage = conversationElement.find(".conversation .user-avatar img")
+
+        // Map the properties to HTML elements
+        peer.map('.name').assign($userName, "text")
+        peer.map('.screen_name').assign($userHandle, "text")
+        peer.map('.profile_image_url').assign($tweetImage, "attr", "src")
+        conversation.property.map('.preview_message').map('.text').onValue(function (v) { $message.text(v) })
+        peer.map('.screen_name').assign($sender, "text")
+
         return {
-            element: conversationElement
+            element: conversationElement,
+            chosen: conversationElement.asEventStream("click")
         }
     }
 
-    function ConversationListView(listElement, model, hash, selectedList) {
+    function ConversationListView(listElement, model, usersModel, hash, selectedList) {
+        console.log("Conversation List View")
         var repaint = Bacon.once()
-        repaint.map(selectedList).map(render)
-        model.allMessages.onValue(function(messages) {
-            render(messages)
+        repaint.map(selectedList).log("selected").onValue(render)
+        model.addedConversations.onValue(addConversation)
+        model.allMessages.onValue(render)
+
+        model.allMessages.onValue(function(v){
+            _.each(v, function(c) {
+                c.property.log("m?")
+            })
         })
 
         function render (conversations) {
-            // console.log("render", conversations)
+            console.log("render", conversations)
             listElement.children().remove()
             _.each(conversations, addConversation)
         }
 
         function addConversation (conv) {
-            // console.log("conv: ", conv)
-            var view = ConversationPreview(conv)
+            console.log("add conversation", conv)
+            // Also get the user from the usersModel to bind to view dynamically
+            get = usersModel.retrieveItem(conv.peer_id)
+            var user = usersModel.allUsers.map(get)
+            // conv.property.onValue(function(c) { console.log("aa", c) })
+            var view = ConversationPreview(conv, user)
             listElement.prepend(view.element)
+            model.showConversation.plug(view.chosen.takeUntil(repaint).map(conv))
         }
     }
 
-    function ChatView(listElement, model, hash) {
+    function MessageView(message) {
+        var messageTemplate = Handlebars.compile($("#message-template").html())
+        var messageElement = $(messageTemplate(message))
 
+        return {
+            element: messageElement,
+        }
+    }
+
+    function ChatView(listElement, chatElement, model, usersModel, hash) {
+        var repaint = model.showConversation
+        repaint.onValue(selectConversation)
+        hash.onValue(function(){ chatElement.addClass("invisible") })
+
+        function selectConversation(conversation) {
+            conversation.property.log("property").map('.messages').log("m").onValue(render)    
+        }
+
+        function render (messages) {
+            console.log("Render messages:", messages)
+            listElement.children().remove()
+            chatElement.removeClass("invisible")
+            _.each(messages, addMessage)
+        }
+
+        function addMessage(message) {
+            var view = MessageView(message)
+            listElement.prepend(view.element)
+        }
     }
 
     function FilterView(element, hash) {
@@ -147,6 +187,20 @@ $(function() {
           element.find("a").each(function() {
             var link = $(this)
             link.toggleClass("selected", link.attr("href") == hash)
+          })
+        })
+    }
+
+    function SelectView(element, hash) {
+        var selectedView = hash.decode({
+            "#/": "tweet-list",
+            "#/dm": "conversation-list",
+            "#/users": "user-list"
+        })
+        selectedView.onValue(function(id) {
+          element.find("ul").each(function() {
+            var view = $(this)
+            view.toggleClass("invisible", view.attr("id") !== id)
           })
         })
     }
@@ -186,7 +240,8 @@ $(function() {
         function cleanupRetweet (tweet) {
             var newTweet = _.clone(tweet);
             if (_.has(tweet, 'retweeted_status')) {
-                newTweet['retweeted_status']['user_id_str'] = tweet['retweeted_status']['id_str'];
+                newTweet.retweeted_status = _.clone(tweet.retweeted_status)
+                newTweet.retweeted_status.user_id_str = tweet.retweeted_status.id_str;
                 newTweet['retweeted_status']['user'] = null;
                 newTweet['retweeted_status'] = cleanupTweet(tweet['retweeted_status']);
             }
@@ -209,7 +264,7 @@ $(function() {
     }
 
     function UserListModel() {
-        function addItem(newItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === newItem.id_str}).concat([newItem]) }}
+        function addItem(newItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === newItem.id_str }).concat([newItem]) }}
         function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
         function retrieveItem(id) { return function(list) {return _.find(list, function(item){ return item.id_str == id}) }}
         function filterFriendsLists (message) { return _.has(message, 'friends') }
@@ -220,40 +275,43 @@ $(function() {
         this.retrieveItem = retrieveItem
 
         retweetUserInfo = this.tweets.flatMap(function(tweet){
-                // Is a retweet
-                if (tweet.hasOwnProperty('retweeted_status'))
-                    return Bacon.once(_.clone(tweet['retweeted_status']['user']))
-                else
-                    return Bacon.never();
-            })
+            if (tweet.hasOwnProperty('retweeted_status')) return Bacon.once(tweet.retweeted_status.user) // Is a retweet
+            else return Bacon.never();
+        })
         tweetUserInfo = this.tweets.map(function(tweet) { return _.clone(tweet['user']) })
         events = this.twitterEvents.filter(filterEvents)
-        followUserInfo = events.filter(function (event) { 
-                return _.where([event], {'event': 'follow' }) 
-            })
+        followUserInfo = events.filter(function (event) { return _.where([event], {'event': 'follow' }) })
             .map(function (follow) { return _.clone(follow['target']) })
+        dmUserInfo = this.twitterEvents.filter(function (event) { return _.has(event, 'direct_message') })
+            .flatMap(function (dm){ return Bacon.fromArray([dm.direct_message.sender, dm.direct_message.recipient]) })
 
-        this.userInfo = Bacon.mergeAll([followUserInfo, tweetUserInfo, retweetUserInfo]).map(addItem)
+        this.userInfo = Bacon.mergeAll([followUserInfo, tweetUserInfo, retweetUserInfo, dmUserInfo]).map(addItem)
         this.allUsers = this.userInfo.scan([], function(users, f) { return f(users) })
         // this.allUsers.log("user")
     }
 
     function DMListModel() {
+        function matchConversation(peer_id, message) { return message.sender_id_str === peer_id || message.recipient_id_str === peer_id }
+        function prependItem(list, newItem) { return [newItem].concat(list) }
         // Model Direct Messages as a list of dictionaries (conversations), identified by ID of "the other" peer
         // [{peer_id, messages}, ...]
-        function addMessage(newMessage) { 
+        function addMessage(model, newMessage) { 
             return function(list) {
                 var searchID = isOwnID(newMessage.sender_id_str) ? newMessage.recipient_id_str : newMessage.sender_id_str
                 // console.log("search:", searchID)
-                
-                if ( _.some(list, function (conv) { return conv.peer_id === searchID }) ) {
-                    var unchanged = _.reject(list, function(conv){ return conv.peer_id === searchID })
-                    var changed = _.map(_.where(list, function(conv){ return conv.peer_id === searchID }), 
-                        function(conv) { return {peer_id: conv.peer_id, messages: [newMessage].concat(conv.messages)} })
-                    return unchanged.concat(changed)
+                if ( _.every(list, function (conv) { return conv.peer_id !== searchID }) ) {
+                    var conversation = { peer_id: searchID, 
+                        property: Bacon.combineTemplate({
+                            peer_id: searchID,
+                            preview_message: DMs.filter(matchConversation, searchID).toProperty(),
+                            messages: DMs.filter(matchConversation, searchID).scan([newMessage], prependItem)
+                        })
+                    }
+                    console.log("adding new conversation")
+                    model.addedConversations.plug(Bacon.once(conversation))
+                    return list.concat([ conversation ])
                 }
-                else
-                    return list.concat([ {peer_id: searchID, messages: [newMessage]} ])
+                return list
             }
         }
         // function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
@@ -262,8 +320,19 @@ $(function() {
         function unwrap (message) { return message.direct_message }
 
         this.twitterEvents = new Bacon.Bus();
-        this.directMessages = this.twitterEvents.filter(filterDirectMessages).map(unwrap).map(addMessage)
+        this.addedConversations = new Bacon.Bus();
+        this.showConversation = new Bacon.Bus();
+
+        // this.showConversation.plug(this.addedConversations)
+
+        var DMs = this.twitterEvents.filter(filterDirectMessages).map(unwrap)
+        this.directMessages = DMs.map(addMessage, this)
         this.allMessages = this.directMessages.scan([], function(messages, f) { return f(messages) })
+        // this.allMessages.onValue(function(v){
+        //     _.each(v, function(c) {
+        //         c.property.log("m?")
+        //     })
+        // })
     }
 
 
@@ -274,6 +343,8 @@ $(function() {
 
         var hash = Bacon.UI.hash("#/")
         FilterView($("#filters"), hash)
+        SelectView($("#views"), hash)
+
         var selectedList = hash.decode({
             "#/": tweetsModel.allTweets,
             "#/dm": messagesModel.allMessages,
@@ -281,17 +352,17 @@ $(function() {
         })
 
         ItemCountView($("#tweet-count"), hash, selectedList)
-
         hash.onValue(function (h) {
-            console.log(h)
             if (h === "#/")
                 TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
             else if (h === "#/users")
-                UserListView($("#tweet-list"), usersModel, hash, selectedList)
-            else if (h === "#/dm")
-                // UserListView($("#tweet-list"), usersModel, hash, selectedList)
-                ConversationListView($("#tweet-list"), messagesModel, hash, selectedList)
+                UserListView($("#user-list"), usersModel, hash, selectedList)    
+            else 
+                ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
         })
+
+        ChatView($("#message-list"), $("#chat"), messagesModel, usersModel, hash)
+        
         
         // Connect to
         var ws = new WebSocket("ws://127.0.0.1:6969")

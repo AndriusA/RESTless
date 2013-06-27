@@ -37,7 +37,7 @@
 
 
   <script type="text/html" id="user-template">
-    <li id={{id_str}}>
+    <li id="{{id_str}}">
       <div class="view user" id="{{id_str}}">
         <div class="user-header">
              {{name}} <span class="user-name">@{{screen_name}}</span>
@@ -53,17 +53,61 @@
     </li>
   </script>
 
+  <script type="text/html" id="conversation-template">
+    <li id="{{peer_id}}">
+      <div class="view conversation">
+        <div class="user-header">
+             <span class="userName">{{preview_message.sender.name}}</span>
+             @<span class="userHandle">{{preview_message.sender.screen_name}}</span>
+        </div>
+        <div class="user-avatar"><img src={{preview_message.sender.profile_image_url}} alt={{preview_message.sender.name}}></div>
+            <span class="sender">
+                {{preview_message.sender_screen_name}}
+            </span>:
+            <span class="message-text">
+                {{preview_message.text}}
+            </span>
+        <div class="conversation-footer"></div>
+      </div>
+    </li>
+  </script>
+
+  <script type="text/html" id="message-template">
+    <li id="{{peer_id}}">
+      <div class="view message" id="{{id_str}}">
+        <div class="message-text">
+            <div>{{sender.screen_name}}:</div>
+            <div class="message-text">{{text}}</div>
+        </div>
+        <div class="conversation-footer"></div>
+      </div>
+    </li>
+  </script>
+
 
     <section id="twitterapp">
         <header id="header">
             <h1>tweets</h1>
         </header>
-        <section id="main">
-            <div class="container-fluid">
-            <ul id="tweet-list">
-            </ul>
-        </div>
+         <section id="chat" class="invisible">
+            <div>
+                <ul id="message-list" class="view-list">
+                </ul>
+            </div>
         </section>
+        <section id="main">
+            <div class="container-fluid" id="views">
+                <ul id="tweet-list" class="view-list">
+                </ul>
+
+                <ul id="conversation-list" class="view-list">
+                </ul>
+
+                <ul id="user-list" class="view-list">
+                </ul>
+            </div>
+        </section>
+       
         <footer id="footer">
             <span id="tweet-count"><strong>0</strong> retrieved</span>
             <ul id="filters">
@@ -91,6 +135,6 @@
     <script src="../lib/Bacon.js"></script>
     <script src="../lib/Bacon.UI.js"></script>
 
-    <script src="twitterUserStream-compiled.js"></script>
+    <script src="twitterUserStream.js"></script>
 </body>
 </html>
