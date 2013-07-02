@@ -32,8 +32,11 @@ $(function() {
     // VIEWS
     // user gets passed as a property - hook up the changes to template here
     function TweetView(tweet, user) {
+        
         var tweetTemplate = Handlebars.compile($("#tweet-template").html())
-        var tweetElement = $(tweetTemplate(_.extend(tweet, {'user': user}) ))
+        var renderedTweet = renderEntities(tweet)
+        // console.log("tweet view", renderedTweet)
+        var tweetElement = $(tweetTemplate(_.extend(renderedTweet, {'user': user}) ))
         var $header = tweetElement.find(".tweetHeader")
         var $userName = $header.find(".userName")
         var $userHandle = $header.find(".userHandle")
@@ -47,6 +50,35 @@ $(function() {
 
         return {
             element: tweetElement,
+        }
+
+        function renderEntities(tweet) {
+            var withURLs = _.reduce(tweet.entities.urls, function(tweet, url) { return renderURL(tweet, url) }, tweet)
+            var withMentions = _.reduce(tweet.entities.user_mentions, function(tweet, mention) { return renderUserMentions(tweet, mention) }, withURLs)
+            var withHashes = _.reduce(tweet.entities.hashtags, function(tweet, hash) { return renderHash(tweet, hash) }, withMentions)
+            var withMedia = _.reduce(tweet.entities.media, function(tweet, media) { return renderMedia(tweet, media) }, withHashes)
+            return withMedia;
+        }
+        function renderURL(tweet, url) {
+            return _.extend(_.clone(tweet), 
+                {text: tweet.text.replace(url.url, "<a href='"+url.expanded_url+"'>"+url.display_url+"</a>")})
+        }
+
+        function renderMedia(tweet, media) {
+            return _.extend(_.clone(tweet), 
+                {text: tweet.text.replace(media.url, "<a href='"+media.media_url_https+"'>"+media.display_url+"</a>")})
+        }
+
+        function renderHash(tweet, hash) {
+             return _.extend(_.clone(tweet), 
+                {text: tweet.text.replace("#"+hash.text, "<a href='https://twitter.com/search?q=%23"+hash.text+"&src=hash'>#"+hash.text+"</a>")})
+        }
+
+        function renderUserMentions(tweet, user) {
+            // Need the damn regexp because twitter is not consistent in the json representation of mentions and in text
+            var re = new RegExp("@"+user.screen_name, "gi")
+            return _.extend(_.clone(tweet), 
+                {text: tweet.text.replace(re, "<a href='https://twitter.com/"+user.screen_name+"'>@"+user.screen_name+"</a>")})
         }
     }
 
