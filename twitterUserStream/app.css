@@ -75,7 +75,7 @@ body {
 }
 
 #header {
-    padding-top: 15px;
+    padding-top: 35px;
     border-radius: inherit;
 }
 
@@ -85,7 +85,7 @@ body {
     top: 0;
     right: 0;
     left: 0;
-    height: 15px;
+    height: 35px;
     z-index: 2;
     border-bottom: 1px solid #4099FF;
     background: #8d7d77;
@@ -101,6 +101,34 @@ body {
 }
 
 
+#menu-header {
+    color: #000;
+    padding-left: 5px;
+    margin-top: -25px;
+    position: absolute;
+    right: 0;
+    top: 31px;
+    left: 0;
+    height: 20px;
+    z-index: 3;
+    text-align: center;
+}
+
+/*#menu-header:before {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 31px;
+    left: 0;
+    height: 50px;
+    z-index: -1;
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3),
+                0 6px 0 -3px rgba(255, 255, 255, 0.8),
+                0 7px 1px -3px rgba(0, 0, 0, 0.3),
+                0 43px 0 -6px rgba(255, 255, 255, 0.8),
+                0 44px 2px -6px rgba(0, 0, 0, 0.2);
+}*/
+
 #main {
     position: relative;
     z-index: 2;
@@ -111,7 +139,7 @@ body {
 #chat {
     position: absolute;
     margin-left: 650px;
-    margin-top: 0px;
+    margin-top: 35px;
     padding: 10px;
     z-index: 2;
     border-top: 1px dotted #adadad;
@@ -120,6 +148,18 @@ body {
     background: rgba(255, 255, 255, 0.9);
     box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.2),
                 0 25px 50px 0 rgba(0, 0, 0, 0.15);
+}
+
+#chat-form {
+    padding-top: 10px;
+    margin-bottom: 0px;
+}
+
+#chat-form .input-small {
+    width: 75%;
+}
+#chat-form #chat-send {
+    width: 18%;
 }
 
 .view-list {
@@ -165,37 +205,11 @@ div .tweetImage{
     /*display:inline;*/
 }
 div .tweetContent{
-    width: 590px;
+    width: 100%;
     /*display:inline;*/
 }
 
 
-#footer {
-    color: #777;
-    padding: 0 15px;
-    position: absolute;
-    right: 0;
-    bottom: -31px;
-    left: 0;
-    height: 20px;
-    z-index: 1;
-    text-align: center;
-}
-
-#footer:before {
-    content: '';
-    position: absolute;
-    right: 0;
-    bottom: 31px;
-    left: 0;
-    height: 50px;
-    z-index: -1;
-    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.3),
-                0 6px 0 -3px rgba(255, 255, 255, 0.8),
-                0 7px 1px -3px rgba(0, 0, 0, 0.3),
-                0 43px 0 -6px rgba(255, 255, 255, 0.8),
-                0 44px 2px -6px rgba(0, 0, 0, 0.2);
-}
 
 #tweet-count {
     float: left;
@@ -216,7 +230,7 @@ div .tweetContent{
 }
 
 #filters li a {
-    color: #83756f;
+    color: #23150f;
     margin: 2px;
     text-decoration: none;
 }
@@ -292,9 +306,31 @@ div .tweetContent{
     display: none;
 }
 
-.message-text {
+.message-header {
     clear: both;
+    float: right;
+}
+.message-text {
+    /*clear: both;*/
+    padding-top: 5px;
 }
 .message-text .own {
     float: right;
+}
+
+.container-fluid {
+    padding-left: 0px;
+    padding-right: 0px;
+}
+
+#tweet-form textarea{
+    width: 85%;
+}
+#tweet-form button{
+    width: 12%;
+}
+
+#tweet-form form{
+    /*border-bottom: 1px solid #ccc;*/
+    padding: 10px 10px 0px 10px;
 }
