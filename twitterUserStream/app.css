@@ -283,6 +283,7 @@ div .tweetContent{
 .user-avatar {
     position: inline;
     float: left;
+    width: 48px;
 }
 .user-text {
     position: inline;

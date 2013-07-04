@@ -57,13 +57,16 @@ $(function() {
             return _.extend(_.clone(tweet), 
                 {text: tweet.text.replace(re, "<a href='https://twitter.com/"+user.screen_name+"'>@"+user.screen_name+"</a>")})
         }
-    }     
+    }
+
+    var tweetTemplate = Handlebars.compile($("#tweet-template").html())
+    var userTemplate = Handlebars.compile($("#user-template").html())
+    var conversationTemplate = Handlebars.compile($("#conversation-template").html())
+    var messageTemplate = Handlebars.compile($("#message-template").html())
 
     // VIEWS
     // user gets passed as a property - hook up the changes to template here
     function TweetView(tweet, user) {
-        
-        var tweetTemplate = Handlebars.compile($("#tweet-template").html())
         var renderedTweet = renderEntities(tweet)
         // console.log("tweet view", renderedTweet)
         var tweetElement = $(tweetTemplate(_.extend(renderedTweet, {'user': user}) ))
@@ -71,9 +74,11 @@ $(function() {
         var $userName = $header.find(".userName")
         var $userHandle = $header.find(".userHandle")
         var $tweetImage = tweetElement.find(".tweetImage img")
+        var $userLink = $header.find("a")
 
-        user.map('.name').assign($userName, "text")
+        user.map('.name')/*.log("forName, assign")*/.assign($userName, "text")
         user.map('.screen_name').assign($userHandle, "text")
+        user.map('.screen_name').map(function(name){ return "https://twitter.com/"+name}).assign($userLink, "attr", "href")
         user.map('.profile_image_url').assign($tweetImage, "attr", "src")
 
         // console.log(tweetElement)
@@ -95,14 +100,16 @@ $(function() {
     }
 
     function TweetListView(listElement, model, usersModel, hash, selectedList) {
-        var repaint = model.deletedTweets
-        repaint.merge(Bacon.once()).map(selectedList).onValue(render)
+        // var repaint = model.deletedTweets
+        var views = {}
+        var repaint = Bacon.once()
+        repaint.map(selectedList).onValue(render)
 
-        model.tweets.onValue(function(tweet) {
-            addTweet(tweet)
-        })
+        model.tweets.onValue(function(tweet) { addTweet(tweet) })
+        model.deletedTweets.onValue(function(tweet) { deleteTweet(tweet) })
 
         function render(tweets) {
+            console.log("Full list render")
             listElement.children().remove()
             addTweetForm()
             _.each(tweets, addTweet)
@@ -110,11 +117,17 @@ $(function() {
 
         function addTweet(tweet) {
             get = usersModel.retrieveItem(tweet.user_id_str)
-            var user = usersModel.allUsers.map(get).skipDuplicates()
-            
+            var user = usersModel.allUsers.map(get).takeUntil(repaint).skipDuplicates()
+            // var user = usersModel.updateUser.filter(function(u){ return u.id_str === tweet.user_id_str}).skipDuplicates()
+            // user.log("user")
             var view = TweetView(tweet, user)
             view.element.insertAfter(listElement.children().eq(0))
+            views[tweet.id_str] = view
             // model.tweetDeleted.plug(view.destroy.takeUntil(repaint))
+        }
+
+        function deleteTweet(tweet) {
+            listElement.find("#"+tweet.delete.status.id_str).remove()
         }
 
         function addTweetForm() {
@@ -128,7 +141,6 @@ $(function() {
     }
 
     function UserView(user) {
-        var userTemplate = Handlebars.compile($("#user-template").html())
         var userElement = $(userTemplate(user))
         return {
             element: userElement
@@ -160,7 +172,6 @@ $(function() {
 
     function ConversationPreview(conversation, peer) {
         // console.log("conversation", conversation)
-        var conversationTemplate = Handlebars.compile($("#conversation-template").html())
         var conversationElement = $(conversationTemplate(conversation))
 
         // Get the elements that are bound to properties dynamically
@@ -208,9 +219,7 @@ $(function() {
     }
 
     function MessageView(message) {
-        var messageTemplate = Handlebars.compile($("#message-template").html())
         var messageElement = $(messageTemplate(message))
-
         return {
             element: messageElement,
         }
@@ -359,9 +368,22 @@ $(function() {
     }
 
     function UserListModel() {
-        function addItem(newItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === newItem.id_str }).concat([newItem]) }}
+        function addItem(newItem) { return function(list) { 
+            return _.reject(list, function(item) { return item.id_str === newItem.id_str }).concat([newItem]) 
+        }}
         function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
         function retrieveItem(id) { return function(list) {return _.find(list, function(item){ return item.id_str == id}) }}
+        function addNew(updateUserBus, newItem) { return function(list) {
+            if (_.isEqual(_.omit(retrieveItem(newItem.id_str)(list), 'statuses_count'), _.omit(newItem, 'statuses_count'))) {
+                // console.log("nothing changed")
+                return list
+            }
+            else {
+                // console.log("updating user", newItem.name)
+                updateUserBus.plug(Bacon.once(newItem))
+                return addItem(newItem)(list)
+            }
+        }}
         function filterFriendsLists (message) { return _.has(message, 'friends') }
         function filterEvents (message) { return _.has(message, 'event') }
         function getUserInfo (user_id_str) { return {type: "get", url: "https://api.twitter.com/1.1/users/show.json?screen_name=rsarver", data: {user_id: user_id_str} }}
@@ -369,6 +391,7 @@ $(function() {
         this.twitterEvents = new Bacon.Bus()
         this.tweets = new Bacon.Bus()
         this.retrieveItem = retrieveItem
+        this.updateUser = new Bacon.Bus()
 
         this.getUserInfo = new Bacon.Bus()
         this.networkRequests = this.getUserInfo.map(getUserInfo)
@@ -385,7 +408,8 @@ $(function() {
             .flatMap(function (dm){ return Bacon.fromArray([dm.direct_message.sender, dm.direct_message.recipient]) })
 
         this.userAdded = Bacon.mergeAll([followUserInfo, tweetUserInfo, retweetUserInfo, dmUserInfo])
-        this.userChanges = this.userAdded.map(addItem)
+
+        this.userChanges = this.userAdded.map(addNew, this.updateUser)
         this.allUsers = this.userChanges.scan([], function(users, f) { return f(users) })
         // this.allUsers.log("user")
     }
@@ -422,7 +446,7 @@ $(function() {
         this.networkRequests = this.sendMessages.map(sendMessage).log("send?")
 
         this.messageReceived = this.twitterEvents.filter(filterDirectMessages).map(unwrap).map(addPeer).filter(notOwnMessage)
-                                    .merge(this.sendMessages.map(previewMessage))                            
+                                    .merge(this.sendMessages.map(previewMessage))
         this.messageChanges = this.messageReceived.map(addMessage)
         this.allMessages = this.messageChanges.scan([], function(messages, f) { return f(messages) })
     }

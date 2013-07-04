@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-    <title>Bacon.js • Twitter Stream</title>
+    <title>Poultry and Bacon (Twitter and Bacon.js)</title>
     <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="app.css">
     
@@ -15,7 +15,7 @@
 
 
   <script type="text/html" id="tweet-template">
-    <li>
+    <li id="{{id_str}}">
       <div class="view tweet">
         <div class="tweetImage">
             <img class="tweetImage" src="{{user.profile_image_url}}">
@@ -23,7 +23,7 @@
         <div class="tweetContent">
             <div class="tweetHeader">
                 <span class="userName">{{user.name}}</span>
-                @<span class="userHandle">{{user.screen_name}}</span>
+                <a href="https://twitter.com/{{user.screen_name}}">@<span class="userHandle">{{user.screen_name}}</span></a>
             </div>
             <div class="tweetText">
                 {{{text}}}
@@ -157,7 +157,7 @@
     <script src="../lib/jquery.js"></script>
     <!--<script src="js/lodash.min.js"></script>-->
     <script src="js/underscore.js"></script>
-    <script src="js/handlebars.min.js"></script>
+    <script src="js/handlebars.js"></script>
     <script src="js/jquery-hashchange-min.js"></script>
     <script src="js/moment.min.js"></script>
     <script src="../lib/Bacon.js"></script>
