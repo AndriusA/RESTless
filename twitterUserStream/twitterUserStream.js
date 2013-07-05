@@ -30,15 +30,16 @@ $(function() {
     }
 
     function renderEntities(tweet) {
-        var withURLs = _.reduce(tweet.entities.urls, function(tweet, url) { return renderURL(tweet, url) }, tweet)
-        var withMentions = _.reduce(tweet.entities.user_mentions, function(tweet, mention) { return renderUserMentions(tweet, mention) }, withURLs)
-        var withHashes = _.reduce(tweet.entities.hashtags, function(tweet, hash) { return renderHash(tweet, hash) }, withMentions)
-        var withMedia = _.reduce(tweet.entities.media, function(tweet, media) { return renderMedia(tweet, media) }, withHashes)
-        return withMedia;
+        var newTweet = _.clone(tweet)
+        newTweet = _.reduce(tweet.entities.urls, function(tweet, url) { return renderURL(tweet, url) }, newTweet)
+        newTweet = _.reduce(tweet.entities.user_mentions, function(tweet, mention) { return renderUserMentions(tweet, mention) }, newTweet)
+        newTweet = _.reduce(tweet.entities.hashtags, function(tweet, hash) { return renderHash(tweet, hash) }, newTweet)
+        newTweet = _.reduce(tweet.entities.media, function(tweet, media) { return renderMedia(tweet, media) }, newTweet)
+        return newTweet;
     
         function renderURL(tweet, url) {
-        return _.extend(_.clone(tweet), 
-            {text: tweet.text.replace(url.url, "<a href='"+url.expanded_url+"'>"+url.display_url+"</a>")})
+            return _.extend(_.clone(tweet), 
+                {text: tweet.text.replace(url.url, "<a href='"+url.expanded_url+"'>"+url.display_url+"</a>")})
         }
 
         function renderMedia(tweet, media) {
@@ -105,7 +106,9 @@ $(function() {
         var repaint = Bacon.once()
         repaint.map(selectedList).onValue(render)
 
-        model.tweets.onValue(function(tweet) { addTweet(tweet) })
+        // model.tweets.onValue(function(tweet) { addTweet(listElement, tweet) })
+        // Instead of adding each tweet as it comes in, buffer them for 10ms and add in batch through a DocumentFragment
+        model.tweets.bufferWithTime(10).onValue(addBuffered)
         model.deletedTweets.onValue(function(tweet) { deleteTweet(tweet) })
 
         function render(tweets) {
@@ -115,14 +118,19 @@ $(function() {
             _.each(tweets, addTweet)
         }
 
-        function addTweet(tweet) {
+        function addBuffered(tweets) {
+            var frag = $(document.createDocumentFragment())
+            var newAdd = _.partial(addTweet, frag)
+            _.each(tweets, newAdd)
+            listElement.append(frag)
+        }
+
+        function addTweet(element, tweet) {
             get = usersModel.retrieveItem(tweet.user_id_str)
             var user = usersModel.allUsers.map(get).takeUntil(repaint).skipDuplicates()
-            // var user = usersModel.updateUser.filter(function(u){ return u.id_str === tweet.user_id_str}).skipDuplicates()
-            // user.log("user")
             var view = TweetView(tweet, user)
-            view.element.insertAfter(listElement.children().eq(0))
-            views[tweet.id_str] = view
+            element.prepend(view.element)
+            // views[tweet.id_str] = view
             // model.tweetDeleted.plug(view.destroy.takeUntil(repaint))
         }
 
