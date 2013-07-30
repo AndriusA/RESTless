@@ -108,7 +108,7 @@ $(function() {
 
         // model.tweets.onValue(function(tweet) { addTweet(listElement, tweet) })
         // Instead of adding each tweet as it comes in, buffer them for 10ms and add in batch through a DocumentFragment
-        model.tweets.bufferWithTime(10).onValue(addBuffered)
+        model.tweets.bufferWithTime(100).onValue(addBuffered)
         model.deletedTweets.onValue(function(tweet) { deleteTweet(tweet) })
 
         function render(tweets) {
@@ -122,7 +122,8 @@ $(function() {
             var frag = $(document.createDocumentFragment())
             var newAdd = _.partial(addTweet, frag)
             _.each(tweets, newAdd)
-            listElement.append(frag)
+            frag.insertAfter(listElement.children()[0])
+            // listElement.insertAfter(frag, listElement.children()[0])
         }
 
         function addTweet(element, tweet) {
@@ -463,8 +464,16 @@ $(function() {
         // Connect to the websocket backend
         var ws = new WebSocket("ws://127.0.0.1:6969")
         ws.onopen = function() { console.log("Websocket connection opened"); }
+        var i = 0;
 
-        tweetsModel.twitterEvents.plug(Bacon.fromEventTarget(ws, "message").map(".data").map(JSON.parse))
+        var wsEvents = Bacon.fromEventTarget(ws, "message").map(".data").map(JSON.parse).flatMap( function(e) {
+            i = i + 1;
+            return Bacon.later(i*10, e);
+        })
+
+        wsEvents.log("event")
+
+        tweetsModel.twitterEvents.plug(wsEvents)
 
         networkRequests = messagesModel.networkRequests
                             .merge(usersModel.networkRequests)
