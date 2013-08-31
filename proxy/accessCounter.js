@@ -51,14 +51,37 @@ function runApp(o) {
   o.func; o.func;
 }
 
+var subjHandler = {
+  count : [],
+  get: function(obj, prop) {
+    // An extra property
+    if (prop === 'count') {
+      return this.count;
+    }
+    count[prop] = (count[prop] || 0) + 1;
+    console.log("get ", prop);
+    // The default behavior to return the value
+    return obj[prop];
+  },
+  set: function(obj, prop, value) {
+
+    // Convert the value if it is not an array
+    if (typeof value === 'string') {
+      value = [value];
+    }
+
+    // The default behavior to store the value
+    obj[prop] = value;
+  }
+};
+
 function init(){
   var factory = makeCustomProxyFactory();
 
   var subjectBase = { foo: 42, bar: 24, func: {one: 1, two: 2} };
-  var subjectMeta = makeSimpleProfiler(subjectBase, "subject", factory);
-  var subject = subjectMeta.proxy;
-  console.log("handler", factory.handlerOf(subject))
-  runApp(subject);
+  var sMeta = new Proxy(subjectBase, subjHandler);
+  runApp(sMeta);
+  plotHistogram(sMeta.count);
 
   // var func = subject.func;
   // func.one;
@@ -68,20 +91,20 @@ function init(){
   // var funcMeta = makeSimpleProfiler(funcBase, "func<-"+factory.handlerOf(subject).targetName, factory);
   // var func = funcMeta.proxy;
 
-  var intermSubject = subject;
+  // var intermSubject = subjectBase;
 
-  var func = makeSimpleProfiler(intermSubject.func, "func<-"+factory.handlerOf(intermSubject).targetName, factory).proxy;
-  func.one; func.one;
-  func.two;
+  // var func = makeSimpleProfiler(intermSubject.func, "func<-"+factory.handlerOf(intermSubject).targetName, factory).proxy;
+  // func.one; func.one;
+  // func.two;
 
-  // var varName = expr;
-  // ||
-  // \/
-  // var varName = makeSimpleProfiler(expr, name, factory).proxy
+  // // var varName = expr;
+  // // ||
+  // // \/
+  // // var varName = makeSimpleProfiler(expr, name, factory).proxy
 
-  console.log("handler", factory.handlerOf(func))
+  // console.log("handler", factory.handlerOf(func))
 
-  plotHistogram(subjectMeta.stats);
+  // plotHistogram(subjectMeta.stats);
   // plotHistogram(funcMeta.stats);  
 };
 
