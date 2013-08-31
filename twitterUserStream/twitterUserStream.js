@@ -463,12 +463,10 @@ $(function() {
 
         var wsEvents = Bacon.fromEventTarget(ws, "message").map(".data").map(JSON.parse).flatMap( function(e) {
             i = i + 1;
-            return Bacon.later(i*10, e);
+            return Bacon.later(i*0, e);
         })
 
-        wsEvents.log("event")
-
-        tweetsModel.twitterEvents.plug(wsEvents)
+        // wsEvents.log("event")
 
         var requests = messagesModel.networkRequests
                             .merge(usersModel.networkRequests)
@@ -479,6 +477,8 @@ $(function() {
             console.log("network request", request);
             ws.send(JSON.stringify(request));
         })
+
+        return wsEvents;
     }
 
     function TwitterApp() {
@@ -507,7 +507,9 @@ $(function() {
         ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
         ChatView($("#message-list"), $("#chat"), messagesModel, usersModel, hash)
 
-        networkRequests(tweetsModel, usersModel, messagesModel)
+        var netRequests = networkRequests(tweetsModel, usersModel, messagesModel)
+
+        tweetsModel.twitterEvents.plug( netRequests )
         
         // Plug both complete twitter stream (for follows/unfollows, etc.)
         // and filtered only tweets - this model should not have to know how to filter for tweets
