@@ -461,6 +461,7 @@ $(function() {
         ws.onopen = function() { console.log("Websocket connection opened"); }
         var i = 0;
 
+        // @wsEvents
         var wsEvents = Bacon.fromEventTarget(ws, "message").map(".data").map(JSON.parse).flatMap( function(e) {
             i = i + 1;
             return Bacon.later(i*0, e);
@@ -509,6 +510,7 @@ $(function() {
 
         var netRequests = networkRequests(tweetsModel, usersModel, messagesModel)
 
+        // @twitterEvents <- @wsEvents
         tweetsModel.twitterEvents.plug( netRequests )
         
         // Plug both complete twitter stream (for follows/unfollows, etc.)
