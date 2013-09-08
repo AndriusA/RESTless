@@ -59,6 +59,7 @@ $().ready(function () {
     var foo = mouseUpES.merge(mouseDownES);
     foo.BaconName = "foo";
     // console.log(foo.BaconName, foo.BaconInputs);
+    BaconTracer.drawRelationships("graph");
 
 });
 

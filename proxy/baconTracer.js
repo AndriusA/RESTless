@@ -20,34 +20,30 @@
   var counter = 0;
   var BaconMap = {};
 
+  BaconMap[counter++] = {BaconID: counter, BaconName: "TOPLEVEL"};
   this.BaconTracer = BaconTracer = {}
   this.Relationships = Relationships = {}
 
   BaconTracer.proxyObject = function (target) {
     var BaconName = undefined;
     // A list of Bacon Observables that the current one takes data from
-    var BaconInputs = [];
     var handler = new ForwardingHandler(target);
     var BaconID = counter++;
+    var generator = undefined;
     
     handler.get = function(rcvr, name) {
       if (name === "BaconName") {
         return BaconName;
       }
-      if (name === "BaconInputs") {
-        if (BaconInputs.length > 0) {
-          console.log("BaconInputs: ");
-          for (i in BaconInputs)
-            console.log(BaconMap[BaconInputs[i]].BaconName)
-        }
-        return BaconInputs;
-      }
       if (name === "BaconID") {
         return BaconID;
       }
+      if (name === "generator") {
+        return generator;
+      }
 
       if (typeof this.target[name] === "function") {
-          return BaconTracer.proxyFunction(this.target[name], this.target);
+          return BaconTracer.proxyFunction(this.target[name], name);
       }
 
       return this.target[name];
@@ -59,8 +55,9 @@
           console.debug("Setting name "+val+" for observable ID", BaconID);
           return true;
       }
-      if (name === "BaconInputs") {
-        BaconInputs = val;
+      if (name === "generator") {
+        generator = val;
+        console.log("set generator to", generator, val);
         return true;
       }
       this.target[name]=val;
@@ -78,24 +75,36 @@
     } 
   }
 
-  BaconTracer.proxyFunction = function (target) {
+  BaconTracer.proxyFunction = function (target, targetName) {
     return Proxy.createFunction(
       new ForwardingHandler(target),
       function() { 
         // trace();
-        // console.log(target, arguments);            
         var targetFunResult = undefined;
         targetFunResult = target.apply(this, arguments);
+
+        
         
         // Check if we want to encapsulate the result
         if (BaconInstance(targetFunResult)) {
           var proxy = BaconTracer.proxyObject(targetFunResult);
+          console.log(targetName);
+          proxy.generator = targetName;
           if (BaconInstance(this))
-            proxy.BaconInputs.push(this.BaconID);
+            addRelationship(proxy.BaconID, this.BaconID);
           for (arg in arguments){
             var argument = arguments[arg];
             if (BaconInstance(argument))
-              proxy.BaconInputs.push(argument.BaconID);
+              addRelationship(proxy.BaconID, argument.BaconID);
+          }
+
+          // Special clause to deal with when EventStreams are created from HTML actions
+          if (targetName === "asEventStream") {
+            console.log(this.selector, arguments, targetName)
+            var elementBaconID = counter++;
+            BaconMap[elementBaconID] = {BaconID: elementBaconID, BaconName: this.selector, generator: arguments[0]};
+            addRelationship(proxy.BaconID, elementBaconID);
+            addRelationship(elementBaconID, 0);
           }
 
           return proxy;
@@ -107,7 +116,7 @@
           for (arg in arguments){
             var argument = arguments[arg];
             if (BaconInstance(argument))
-              this.BaconInputs.push(argument.BaconID);
+              addRelationship(this.BaconID, argument.BaconID);
           }
         }
         return targetFunResult;
@@ -130,7 +139,7 @@
     );
   }
 
-  $.fn.asEventStream = BaconTracer.proxyFunction(Bacon.$.asEventStream);
+  $.fn.asEventStream = BaconTracer.proxyFunction(Bacon.$.asEventStream, "asEventStream");
 
   function trace() {
     try {
@@ -146,6 +155,143 @@
       || obj instanceof Bacon.Property 
       || obj instanceof Bacon.Observable 
       || obj instanceof Bacon.Bus;
+  }
+
+  function addRelationship(target, source) {
+    if (Relationships[target])
+      Relationships[target].push(source)
+    else 
+      Relationships[target] = [source];
+  }
+
+  BaconTracer.getRelationships = function(){
+    links = [];
+    nodes = {};
+    for (i in Relationships) {
+      for (j in Relationships[i]) {
+        // if (BaconMap[i].BaconName && BaconMap[Relationships[i][j]].BaconName )
+        links.push({
+          target: BaconMap[i].BaconID, 
+          source: Relationships[i][j]
+        })
+      }
+    }
+    links.forEach(function(link) {
+      link.source = nodes[link.source] || (nodes[link.source] = {id: link.source, name: BaconMap[link.source].BaconName, generator: BaconMap[link.source].generator});
+      link.target = nodes[link.target] || (nodes[link.target] = {id: link.target, name: BaconMap[link.target].BaconName, generator: BaconMap[link.target].generator});
+    });
+    console.log(nodes);
+    console.log(links);
+    return {nodes: nodes, links: links};
+  }
+
+  BaconTracer.drawRelationships = function(elementID) {
+    var svg = d3.select("#"+elementID).append("svg")
+        .attr("width", "1400px")
+        .attr("height", "1000px");
+    // Chart dimensions.
+    var margin = {top: 30, right: 30, bottom: 30, left: 30},
+        width = 1400 - margin.right - margin.left,
+        height = 1000 - margin.top - margin.bottom;
+
+    var data = BaconTracer.getRelationships();
+    var force = d3.layout.force()
+        .nodes(d3.values(data.nodes))
+        .links(data.links)
+        .size([width, height])
+        .linkDistance(50)
+        .charge(-600)
+
+    var area = svg.append("g")
+        .attr("transform", "translate(" + (margin.left) + "," + margin.top + ")")
+        .attr("width", width)
+        .attr("height", height)    
+
+    var defs = area.append("svg:defs")
+    var pathArea = area.append("svg:g")
+    var nodesArea = area.append("g")
+    var textArea = area.append("g")
+    
+    var path, circle, text;
+
+    function restart(links, nodes) {
+        console.log("restarting");
+
+        force.links(links);
+        force.nodes(d3.values(nodes));
+        force.on("tick", tick)
+        
+        var markers = defs.selectAll("marker")
+            .data(_.map(force.links(), function(d){ return d.source.id+"-"+d.target.id}), function(d){ return d;});
+
+        markers.enter().append("marker")
+                .attr("class", "linkMarker")
+                .attr("id", String)
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 16)
+                .attr("refY", -1.5)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+            .append("svg:path")
+                .attr("d", "M0,-5L10,0L0,5");
+        markers.exit().remove();
+
+        path = pathArea.selectAll("path")
+                .data(force.links(), function(d){ return d.source.id+"-"+d.target.id;})
+
+        path.enter().append("svg:path")
+                .attr("class", "link")
+                .attr("marker-end", function(d) { return "url(#" + d.source.id +"-"+d.target.id + ")"; })
+
+        path.exit().remove()
+
+
+        circle = nodesArea.selectAll("circle")
+                .data(force.nodes(), function(d) { return d.name; })
+
+        circle.enter().append("circle")
+                .attr("class", "nodeName")
+                .attr("r", 6)
+                .call(force.drag);
+
+        circle.exit().remove();
+
+        text = textArea.selectAll("g")
+                .data(force.nodes())
+        
+        var svgText = text.enter().append("g");
+        text.exit().remove();
+
+        svgText.append("svg:text")
+            .attr("text-anchor", "center")
+            .attr("x", 10)
+            .attr("y", 10)
+            .text(function(d) { return (d.name ? d.name : d.id) + (d.generator ? " " + d.generator: "") });
+
+        force.start();
+
+        // Use elliptical arc path segments to doubly-encode directionality.
+        function tick() {
+            path.attr("d", function(d) {
+                // console.log("path", d);
+                var dx = d.target.x - d.source.x,
+                dy = d.target.y - d.source.y,
+                dr = Math.sqrt(dx * dx + dy * dy);
+                return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+            });
+
+            circle.attr("transform", function(d) {
+                return "translate(" + d.x + "," + d.y + ")";
+            });
+
+            text.attr("transform", function(d) {
+                return "translate(" + d.x + "," + d.y + ")";
+            });
+        }
+    }
+
+    restart(links, nodes); 
   }
 
 }).call(this);
