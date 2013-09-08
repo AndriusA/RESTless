@@ -16,28 +16,37 @@
 
 (function() {
   var BaconTracer;
+  var Relationships;
+  var counter = 0;
+  var BaconMap = {};
 
   this.BaconTracer = BaconTracer = {}
+  this.Relationships = Relationships = {}
 
   BaconTracer.proxyObject = function (target) {
-    var BaconName = "";
+    var BaconName = undefined;
     // A list of Bacon Observables that the current one takes data from
     var BaconInputs = [];
     var handler = new ForwardingHandler(target);
+    var BaconID = counter++;
     
     handler.get = function(rcvr, name) {
-      // console.log(BaconName+"."+name);
       if (name === "BaconName") {
-        // if (BaconName === "")
-        //   return "NameNotSet";
         return BaconName;
       }
       if (name === "BaconInputs") {
+        if (BaconInputs.length > 0) {
+          console.log("BaconInputs: ");
+          for (i in BaconInputs)
+            console.log(BaconMap[BaconInputs[i]].BaconName)
+        }
         return BaconInputs;
+      }
+      if (name === "BaconID") {
+        return BaconID;
       }
 
       if (typeof this.target[name] === "function") {
-          // console.log(BaconName + "( " + name + " )");
           return BaconTracer.proxyFunction(this.target[name], this.target);
       }
 
@@ -46,7 +55,8 @@
 
     handler.set =  function(rcvr,name,val) {
       if (name === "BaconName") {
-          BaconName += val;
+          BaconName = val;
+          console.debug("Setting name "+val+" for observable ID", BaconID);
           return true;
       }
       if (name === "BaconInputs") {
@@ -59,6 +69,7 @@
 
     try {
       var proxy = Proxy.create(handler, Object.getPrototypeOf(target));
+      BaconMap[BaconID] = proxy;
       return proxy;
     } catch (err) {
       console.log("Error:");
@@ -77,21 +88,14 @@
         targetFunResult = target.apply(this, arguments);
         
         // Check if we want to encapsulate the result
-        if (targetFunResult instanceof Bacon.EventStream 
-          || targetFunResult instanceof Bacon.Property 
-          || targetFunResult instanceof Bacon.Observable
-          || targetFunResult instanceof Bacon.Bus) {
-
-          // var tName = this.BaconName ? this.BaconName : "";
+        if (BaconInstance(targetFunResult)) {
           var proxy = BaconTracer.proxyObject(targetFunResult);
-
-          if (this.BaconName && (this instanceof Bacon.EventStream || this instanceof Bacon.Property || this instanceof Bacon.Observable || this instanceof Bacon.Bus))
-            proxy.BaconInputs.push(this.BaconName);
+          if (BaconInstance(this))
+            proxy.BaconInputs.push(this.BaconID);
           for (arg in arguments){
             var argument = arguments[arg];
-            // if (argument instanceof Bacon.Property && argument.BaconName)
-            if (argument.BaconName)
-              proxy.BaconInputs.push(argument.BaconName);
+            if (BaconInstance(argument))
+              proxy.BaconInputs.push(argument.BaconID);
           }
 
           return proxy;
@@ -102,14 +106,14 @@
         if (this instanceof Bacon.Bus) {
           for (arg in arguments){
             var argument = arguments[arg];
-            if (argument.BaconName)
-              this.BaconInputs.push(argument.BaconName);
+            if (BaconInstance(argument))
+              this.BaconInputs.push(argument.BaconID);
           }
         }
         return targetFunResult;
       },
+      // When a function is called as a constructor (i.e. with New) - different logic
       function() {
-        // console.debug("Constructor called");
         var temp = function(){};
         var inst, ret;
         temp.prototype = target.prototype;
@@ -118,7 +122,6 @@
         var targetFunResult = Object(ret) === ret ? ret : inst;
         
         if (targetFunResult instanceof Bacon.Bus) {
-          // console.debug("proxying");
           var proxy = BaconTracer.proxyObject(targetFunResult);
           return proxy;
         } 
@@ -136,6 +139,13 @@
     catch(err) {
       console.log(err.stack);
     }
+  }
+
+  function BaconInstance(obj) {
+    return obj instanceof Bacon.EventStream 
+      || obj instanceof Bacon.Property 
+      || obj instanceof Bacon.Observable 
+      || obj instanceof Bacon.Bus;
   }
 
 }).call(this);
