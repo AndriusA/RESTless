@@ -19,18 +19,8 @@
       font: 10px sans-serif;
     }
 
-    path {
-      fill: steelblue;
-    }
-
     .label {
       font: 12px sans-serif;
-    }
-
-    .link {
-      fill: none;
-      stroke: black;
-      stroke-width: 1;
     }
 
     marker path{
@@ -42,12 +32,28 @@
       stroke: black;
     }
 
+    .node circle {
+      cursor: pointer;
+      fill: #fff;
+      stroke: steelblue;
+      stroke-width: 1.5px;
+    }
+
+    .node text {
+      font-size: 11px;
+    }
+
+    path.link {
+      fill: none;
+      stroke: #ccc;
+      stroke-width: 1.5px;
+    }
+
+
     </style>
 <body>
+    <div id="graph"></div>
     <div id="clickable-block"></div>
-
-    <div id="graph">
-    </div>
 </body>
 
     <script src="../lib/jquery.js"></script>

@@ -83,8 +83,6 @@
         var targetFunResult = undefined;
         targetFunResult = target.apply(this, arguments);
 
-        
-        
         // Check if we want to encapsulate the result
         if (BaconInstance(targetFunResult)) {
           var proxy = BaconTracer.proxyObject(targetFunResult);
@@ -158,22 +156,22 @@
   }
 
   function addRelationship(target, source) {
-    if (Relationships[target])
-      Relationships[target].push(source)
+    if (Relationships[source])
+      Relationships[source].push(target)
     else 
-      Relationships[target] = [source];
+      Relationships[source] = [target];
   }
 
-  BaconTracer.getRelationships = function(){
+  BaconTracer.getRelationshipsPairs = function(importantOnly){
     links = [];
     nodes = {};
     for (i in Relationships) {
       for (j in Relationships[i]) {
-        // if (BaconMap[i].BaconName && BaconMap[Relationships[i][j]].BaconName )
-        links.push({
-          target: BaconMap[i].BaconID, 
-          source: Relationships[i][j]
-        })
+        if (!importantOnly || onPathToNamedNode(Relationships[i][j]))
+          links.push({
+            target: BaconMap[i].BaconID, 
+            source: Relationships[i][j]
+          })
       }
     }
     links.forEach(function(link) {
@@ -185,22 +183,34 @@
     return {nodes: nodes, links: links};
   }
 
-  BaconTracer.drawRelationships = function(elementID) {
+  function onPathToNamedNode(node) {
+    if ( BaconMap[node].BaconName )
+      return true;
+    var onPath = false;
+    for (child in Relationships[node]) {
+      onPath = onPath || onPathToNamedNode(Relationships[node][child]);
+    }
+    return onPath;
+  }
+
+  BaconTracer.drawRelationshipsForce = function(elementID, importantOnly) {
     var svg = d3.select("#"+elementID).append("svg")
         .attr("width", "1400px")
         .attr("height", "1000px");
     // Chart dimensions.
-    var margin = {top: 30, right: 30, bottom: 30, left: 30},
+    var margin = {top: 30, right: 80, bottom: 30, left: 30},
         width = 1400 - margin.right - margin.left,
         height = 1000 - margin.top - margin.bottom;
 
-    var data = BaconTracer.getRelationships();
+    var data = BaconTracer.getRelationshipsPairs(importantOnly);
     var force = d3.layout.force()
         .nodes(d3.values(data.nodes))
         .links(data.links)
         .size([width, height])
         .linkDistance(50)
         .charge(-600)
+        .gravity(0.05)
+        .theta(0.1)
 
     var area = svg.append("g")
         .attr("transform", "translate(" + (margin.left) + "," + margin.top + ")")
@@ -220,9 +230,11 @@
         force.links(links);
         force.nodes(d3.values(nodes));
         force.on("tick", tick)
+
+        var rootNode = force.nodes()[0];
         
         var markers = defs.selectAll("marker")
-            .data(_.map(force.links(), function(d){ return d.source.id+"-"+d.target.id}), function(d){ return d;});
+            .data(_.map(force.links(), function(d){ return d.target.id+"-"+d.source.id}), function(d){ return d;});
 
         markers.enter().append("marker")
                 .attr("class", "linkMarker")
@@ -238,11 +250,11 @@
         markers.exit().remove();
 
         path = pathArea.selectAll("path")
-                .data(force.links(), function(d){ return d.source.id+"-"+d.target.id;})
+                .data(force.links(), function(d){ return d.target.id+"-"+d.source.id;})
 
         path.enter().append("svg:path")
                 .attr("class", "link")
-                .attr("marker-end", function(d) { return "url(#" + d.source.id +"-"+d.target.id + ")"; })
+                .attr("marker-end", function(d) { return "url(#" + d.target.id +"-"+d.source.id + ")"; })
 
         path.exit().remove()
 
@@ -273,12 +285,20 @@
 
         // Use elliptical arc path segments to doubly-encode directionality.
         function tick() {
+            var nodes = force.nodes();
+            for (i in nodes) {
+              if (nodes[i].name && (!Relationships[nodes[i].id] || Relationships[nodes[i].id].length === 0))
+                nodes[i].x = width-margin.right;
+            }
+            rootNode.x = 0;
+            rootNode.y = height/2;
+            for (i in force.nodes())
             path.attr("d", function(d) {
                 // console.log("path", d);
-                var dx = d.target.x - d.source.x,
-                dy = d.target.y - d.source.y,
-                dr = Math.sqrt(dx * dx + dy * dy);
-                return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+                var dx = d.source.x - d.target.x,
+                dy = 0,//d.source.y - d.target.y,
+                dr = 0;//Math.sqrt(dx * dx + dy * dy);
+                return "M" + d.target.x + "," + d.target.y + "A" + dr + "," + dr + " 0 0,1 " + d.source.x + "," + d.source.y;
             });
 
             circle.attr("transform", function(d) {
@@ -292,6 +312,21 @@
     }
 
     restart(links, nodes); 
+  }
+
+  // NOTE: basically wrong, relationships between Observables does not necessarily (usually) form a tree
+  BaconTracer.getRelationshipsTree = function(startNode){
+    var nodeInfo = {};
+    nodeInfo.name = BaconMap[startNode].BaconName;
+    nodeInfo.nodeId = BaconMap[startNode].BaconID;
+    if (Relationships[startNode] && Relationships[startNode].length > 0) {
+      nodeInfo.children = [];
+      for (childNo in Relationships[startNode]) {
+        var child = Relationships[startNode][childNo];
+        nodeInfo.children.push(BaconTracer.getRelationshipsTree(child));
+      }
+    }
+    return nodeInfo;
   }
 
 }).call(this);

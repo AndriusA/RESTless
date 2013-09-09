@@ -43,6 +43,7 @@ $().ready(function () {
     console.log(draggingDeltas.BaconName, draggingDeltas.BaconInputs);
 
     var blockPosition = draggingDeltas.scan([0, 0], add);
+    blockPosition.BaconName = "blockPosition";
     blockPosition.onValue(function (pos) {
         block.css({
             top: pos[1] + "px",
@@ -58,9 +59,7 @@ $().ready(function () {
     mouseUpES.BaconName = "mouseUpES";
     var foo = mouseUpES.merge(mouseDownES);
     foo.BaconName = "foo";
-    // console.log(foo.BaconName, foo.BaconInputs);
-    BaconTracer.drawRelationships("graph");
-
+    BaconTracer.drawRelationshipsForce("graph", true);
 });
 
 function getDraggingDelta (delta, dragging) {
