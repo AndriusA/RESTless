@@ -6,7 +6,7 @@
     <title>Poultry and Bacon (Twitter and Bacon.js)</title>
     <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css">
     <link rel="stylesheet" href="app.css">
-    
+    <link rel="stylesheet" href="tracer.css">
     <!--[if IE]>
     <script src="js/ie.js"></script>
     <![endif]-->
@@ -100,8 +100,6 @@
         </li>
     </script>
 
-
-
     <section id="twitterapp">
         <section id="chat" class="invisible">
             <div>
@@ -149,19 +147,23 @@
        
         
     </section>
+
     <footer id="info">
         <p>Twitter Stream with BaconJS example</p>
         <p>Created by <a href="http://github.com/AndriusA">Andrius Aucinas</a></p>
+        <div id="graph" style="width: 3000px; height: 2000px; margin-left: -400px"></div>
     </footer>
+
 
     <script src="../lib/jquery.js"></script>
     <script src="js/lodash.min.js"></script>
-    <!--<script src="js/underscore.js"></script>-->
     <script src="js/handlebars.js"></script>
     <script src="js/jquery-hashchange-min.js"></script>
     <script src="js/moment.min.js"></script>
-    <script src="js/Bacon.js"></script>
-    <script src="js/Bacon.UI.js"></script>
+    <script src="../lib/Bacon.js"></script>
+    <script src="../lib/Bacon.UI.js"></script>
+    <script src="../lib/d3.min.js"></script>
+    <script src="../proxy/baconTracer.js"></script>
 
     <script src="twitterUserStream.js"></script>
 </body>

@@ -1,5 +1,7 @@
 $(function() {
-        // Recursively remove null or empty (arrays or objects) fields
+    var Bacon = BaconTracer.proxyObject(window.Bacon);
+    Bacon.BaconName = "TopBacon";
+    // Recursively remove null or empty (arrays or objects) fields
     function compactObject(o) {
         _.each(o, function(v, k){
             // Remove all fields that are either null or empty (empty arrays/objects)
@@ -100,6 +102,7 @@ $(function() {
         // var repaint = model.deletedTweets
         var repaint = Bacon.once()
         repaint.map(selectedList).onValue(render)
+        repaint.BaconName = "repaint"
 
         // model.tweets.onValue(function(tweet) { addTweet(listElement, tweet) })
         // Instead of adding each tweet as it comes in, buffer them for 10ms and add in batch through a DocumentFragment
@@ -124,6 +127,7 @@ $(function() {
         function addTweet(element, tweet) {
             var get = usersModel.retrieveItem(tweet.user_id_str)
             var user = usersModel.allUsers.map(get).takeUntil(repaint).skipDuplicates()
+            user.BaconName = "user_ADDTWEET"
             var view = TweetView(tweet, user)
             element.prepend(view.element)
             // views[tweet.id_str] = view
@@ -136,7 +140,9 @@ $(function() {
 
         function addTweetForm() {
             var view = TweetFormView()
+            view.BaconName = "TweetFormView";
             listElement.append(view.element)
+            view.tweetText.BaconName = "TweetFormText";
             model.postedTweets.plug(Bacon.combineTemplate({
                 status: view.tweetText
             }))
@@ -153,7 +159,8 @@ $(function() {
 
     function UserListView(listElement, model, hash, selectedList) {
         var repaint = Bacon.once()
-        repaint.merge(Bacon.once()).map(selectedList).map(render)
+        repaint.map(selectedList).map(render)
+        repaint.BaconName = "repaint";
 
         model.userAdded.onValue(processUser)
 
@@ -201,6 +208,7 @@ $(function() {
     function ConversationListView(listElement, model, usersModel, hash, selectedList) {
         console.log("Conversation List View")
         var repaint = Bacon.once()
+        repaint.BaconName = "repaintConversationList"
         model.allMessages.onValue(render)
 
 
@@ -217,6 +225,7 @@ $(function() {
             var user = usersModel.allUsers.map(get)
             // conv.property.onValue(function(c) { console.log("aa", c) })
             var view = ConversationPreview(_.last(conv), user)
+            view.chosen.BaconName = "ConversationChosen"
             listElement.prepend(view.element)
             model.showConversation.plug(view.chosen.map({peer_id: peer_id, conversation: conv}))
         }
@@ -288,6 +297,7 @@ $(function() {
             "#/dm": "conversation-list",
             "#/users": "user-list"
         })
+        selectedView.BaconName = "selectedView";
         selectedView.onValue(function(id) {
           element.find("ul").each(function() {
             var view = $(this)
@@ -297,13 +307,11 @@ $(function() {
     }
 
     function ItemCountView(element, hash, selectedList) {
-        selectedList.onValue(render)
-
-        function render(items) {
-            Bacon.once(items).map(".length").map(function(count) {
-                return "<strong>" + count + "</strong>" + ((count === 1) ? " item" : " items")
-            }).assign(element, "html")
-        }
+        var itemCount = selectedList.map(".length").map(function(count) {
+            return "<strong>" + count + "</strong>" + ((count === 1) ? " item" : " items")
+        })
+        itemCount.BaconName = "itemCount"
+        itemCount.assign(element, "html")
     }
 
     // MODELS
@@ -353,21 +361,29 @@ $(function() {
         }
 
         this.twitterEvents = new Bacon.Bus()
+        this.twitterEvents.BaconName = "twitterEvents";
         this.deletedTweets = new Bacon.Bus()
+        this.deletedTweets.BaconName = "deletedTweets";
 
         this.postedTweets = new Bacon.Bus()
+        this.postedTweets.BaconName = "postedTweets";
 
-        this.networkRequests = this.postedTweets.log("posted").map(postTweet)
+        this.networkRequests = this.postedTweets.map(postTweet)
+        this.networkRequests.BaconName = "networkRequests";
 
         this.onlyTweets = this.twitterEvents.filter(filterTweets)
-        this.tweets = this.twitterEvents.filter(filterTweets)
+        this.onlyTweets.BaconName = "onlyTweets";
+        this.tweets = this.onlyTweets
                         .map(cleanupTweet)
                         .map(cleanupRetweet)
+        this.tweets.BaconName = "tweets";
         this.deletedTweets.plug(this.twitterEvents.filter(filterTweetDeletions))
         var tweetChanges = this.tweets.map(addItem)
                         .merge(this.deletedTweets.map(removeItem))
+        tweetChanges.BaconName = "tweetChanges";
 
         this.allTweets = tweetChanges.scan([], function(tweets, f) { return f(tweets) })
+        this.allTweets.BaconName = "allTweets";
         // this.allTweets.changes().onValue(storage.writeTweets)
     }
 
@@ -377,6 +393,8 @@ $(function() {
         }}
         // function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
         function retrieveItem(id) { return function(list) {return _.find(list, function(item){ return item.id_str === id}) }}
+
+        //FIXME: bad design, side effects at their worst
         function addNew(updateUserBus, newItem) { return function(list) {
             if (_.isEqual(_.omit(retrieveItem(newItem.id_str)(list), 'statuses_count'), _.omit(newItem, 'statuses_count'))) {
                 // console.log("nothing changed")
@@ -393,28 +411,44 @@ $(function() {
         function getUserInfo (user_id_str) { return {type: "get", url: "https://api.twitter.com/1.1/users/show.json?screen_name=rsarver", data: {user_id: user_id_str} }}
 
         this.twitterEvents = new Bacon.Bus()
+        this.twitterEvents.BaconName = "twitterEvents"
         this.tweets = new Bacon.Bus()
+        this.tweets.BaconName = "tweets"
         this.retrieveItem = retrieveItem
         this.updateUser = new Bacon.Bus()
+        this.updateUser.BaconName = "updateUser"
 
         this.getUserInfo = new Bacon.Bus()
+        this.getUserInfo.BaconName = "getUserInfo"
         this.networkRequests = this.getUserInfo.map(getUserInfo)
+        this.networkRequests.BaconName = "networkRequests";
 
         var retweetUserInfo = this.tweets.flatMap(function(tweet){
             if (tweet.hasOwnProperty('retweeted_status')) return Bacon.once(tweet.retweeted_status.user) // Is a retweet
             else return Bacon.never();
         })
+        retweetUserInfo.BaconName = "retweetUserInfo";
         var tweetUserInfo = this.tweets.map(function(tweet) { return _.clone(tweet['user']) })
+        tweetUserInfo.BaconName = "tweetUserInfo";
         var events = this.twitterEvents.filter(filterEvents)
+        events.BaconName = "events";
         var followUserInfo = events.filter(function (event) { return _.where([event], {'event': 'follow' }) })
             .map(function (follow) { return _.clone(follow['target']) })
+        followUserInfo.BaconName = "followUserInfo";
         var dmUserInfo = this.twitterEvents.filter(function (event) { return _.has(event, 'direct_message') })
             .flatMap(function (dm){ return Bacon.fromArray([dm.direct_message.sender, dm.direct_message.recipient]) })
+        dmUserInfo.BaconName = "dmUserInfo";
 
-        this.userAdded = Bacon.mergeAll([followUserInfo, tweetUserInfo, retweetUserInfo, dmUserInfo])
+        this.userAdded = followUserInfo.merge(tweetUserInfo)
+                            .merge(retweetUserInfo)
+                            .merge(dmUserInfo)
+        this.userAdded.BaconName = "userAdded"
 
+        //FIXME: design of addNew hides the fact that new items are pushed to updateUser
         this.userChanges = this.userAdded.map(addNew, this.updateUser)
+        this.userChanges.BaconName = "userChanges"
         this.allUsers = this.userChanges.scan([], function(users, f) { return f(users) })
+        this.allUsers.BaconName = "allUsers"
         // this.allUsers.log("user")
     }
 
@@ -444,15 +478,22 @@ $(function() {
         }
 
         this.twitterEvents = new Bacon.Bus();
+        this.twitterEvents.BaconName = "twitterEvents";
         this.showConversation = new Bacon.Bus();
+        this.showConversation.BaconName = "showConversation";
         this.sendMessages = new Bacon.Bus();
+        this.sendMessages.BaconName = "SendMessages";
 
-        this.networkRequests = this.sendMessages.map(sendMessage).log("send?")
+        this.networkRequests = this.sendMessages.map(sendMessage)
+        this.networkRequests.BaconName = "networkRequests";
 
         this.messageReceived = this.twitterEvents.filter(filterDirectMessages).map(unwrap).map(addPeer).filter(notOwnMessage)
                                     .merge(this.sendMessages.map(previewMessage))
+        this.messageReceived.BaconName = "messageReceived";
         this.messageChanges = this.messageReceived.map(addMessage)
+        this.messageChanges.BaconName = "messageChanges";
         this.allMessages = this.messageChanges.scan([], function(messages, f) { return f(messages) })
+        this.allMessages.BaconName = "allMessages";
     }
 
     function networkRequests(tweetsModel, usersModel, messagesModel) {
@@ -466,13 +507,15 @@ $(function() {
             i = i + 1;
             return Bacon.later(i*0, e);
         })
+        wsEvents.BaconName = "Websocket Events"
 
         // wsEvents.log("event")
 
         var requests = messagesModel.networkRequests
                             .merge(usersModel.networkRequests)
                             .merge(tweetsModel.networkRequests)
-        tweetsModel.networkRequests.log("tweet request: ")
+        requests.BaconName = "Requests"
+        tweetsModel.networkRequests//.log("tweet request: ")
 
         requests.onValue(function(request){
             console.log("network request", request);
@@ -490,19 +533,23 @@ $(function() {
         var hash = Bacon.UI.hash("#/")
         FilterView($("#filters"), hash)
         SelectView($("#views"), hash)
+        hash.BaconName = "hash"
+        // var hash = null;
 
         var selectedList = hash.decode({
             "#/": tweetsModel.allTweets,
             "#/dm": messagesModel.allMessages,
             "#/users": usersModel.allUsers
         })
+        selectedList.BaconName = "selectedList";
+        // var selectedList = tweetsModel.allTweets;
 
         ItemCountView($("#tweet-count"), hash, selectedList)
-        // hash.onValue(function (h) {
-        //     if (h === "#/") TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
-        //     else if (h === "#/users") UserListView($("#user-list"), usersModel, hash, selectedList)    
-        //     else ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
-        // })
+        hash.onValue(function (h) {
+            if (h === "#/") TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
+            else if (h === "#/users") UserListView($("#user-list"), usersModel, hash, selectedList)    
+            else ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
+        })
         TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
         UserListView($("#user-list"), usersModel, hash, selectedList)
         ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
@@ -521,6 +568,10 @@ $(function() {
     }
 
     TwitterApp()
+    setTimeout(function(){
+        BaconTracer.drawRelationshipsForce("#graph")    
+    }, 1000)
+    
 
 })
 
