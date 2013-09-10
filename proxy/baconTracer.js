@@ -32,7 +32,7 @@
     var generator = undefined;
     
     handler.get = function(rcvr, name) {
-      // console.log("GET", name);
+      // A bunch of special properties
       if (name === "BaconName") {
         return BaconName;
       }
@@ -42,17 +42,20 @@
       if (name === "generator") {
         return generator;
       }
+      // This check should in theory be done using Proxy.isTrapping();
+      // Not even firefox implements it
       if (name === "isProxy") {
         return true;
       }
 
       if (typeof this.target[name] === "function") {
           if (this.target.isProxy) {
-            console.error("The target is a proxy. FRAK", name);
-            console.error("The target's ID is", this.target.ObservableID);
-            console.error("should never get here");
+            console.error("The target is a proxy (" + name + "). The target's ID is " + this.target.ObservableID + ". Should never get here");
+            // Returning null will most likely break execution;
+            // otherwise risk runaway recursion
             return null;
           }
+          // Need a function proxy to deal with function invocations
           return BaconTracer.proxyFunction(this.target[name], name);
       }
 
@@ -62,14 +65,13 @@
     handler.set =  function(rcvr,name,val) {
       if (name === "BaconName") {
           BaconName = val;
-          // console.debug("Setting name "+val+" for observable ID", BaconID);
           return true;
       }
       if (name === "generator") {
         generator = val;
-        // console.log("set generator to", generator);
         return true;
       }
+      // Not allowing to set BaconID or isProxy values from the outside
       this.target[name]=val;
       return true; 
     };
@@ -84,8 +86,7 @@
       BaconMap[BaconID] = proxy;
       return proxy;
     } catch (err) {
-      console.log("Error:");
-      console.log(err.stack);
+      console.error(err.stack);
       throw err;
     } 
   }
@@ -94,19 +95,16 @@
     return Proxy.createFunction(
       new ForwardingHandler(target),
       function() { 
-        // trace();
         var targetFunResult = undefined;
         targetFunResult = target.apply(this, arguments);
 
         // Check if we want to encapsulate the result
         if (BaconInstance(targetFunResult)) {
           var proxy = BaconTracer.proxyObject(targetFunResult);
-          // console.log(targetName);
           proxy.generator = targetName;
 
           // Special clause to deal with when EventStreams are created from HTML actions
           if (targetName === "asEventStream") {
-            // console.log(this.selector, arguments, targetName)
             var elementBaconID = counter++;
             BaconMap[elementBaconID] = {BaconID: elementBaconID, BaconName: this.selector, generator: arguments[0]};
             addRelationship(proxy.BaconID, elementBaconID);
@@ -128,8 +126,6 @@
             if (BaconInstance(argument))
               addRelationship(proxy.BaconID, argument.BaconID);
           }
-          
-          // console.log(counter);
           return proxy;
         }
 
@@ -162,17 +158,6 @@
     );
   }
 
-  $.fn.asEventStream = BaconTracer.proxyFunction(Bacon.$.asEventStream, "asEventStream");
-
-  function trace() {
-    try {
-      throw new Error("myError");
-    }
-    catch(err) {
-      console.log(err.stack);
-    }
-  }
-
   function BaconInstance(obj) {
     return obj instanceof Bacon.EventStream 
       || obj instanceof Bacon.Property 
@@ -181,74 +166,51 @@
   }
 
   function addRelationship(target, source) {
-    if (typeof(source) === undefined)
-      console.error("source is undefined");
-    if (typeof(target) === undefined)
-      console.error("target is undefined");
     if (Relationships[source])
       Relationships[source].push(target)
     else 
       Relationships[source] = [target];
   }
 
-  BaconTracer.getRelationshipsPairs = function(importantOnly){
-    console.debug("Generate relationships graph");
+  // Override "asEventStream" of jquery to trap when Bacon EventStreams are created for HTML interaction
+  $.fn.asEventStream = BaconTracer.proxyFunction(Bacon.$.asEventStream, "asEventStream");
+
+
+  // Generate graph of relationships between Bacon entities
+  BaconTracer.getRelationshipsPairs = function(){
     links = [];
     nodes = {};
     for (i in Relationships) {
-      if (typeof(i) === undefined)
-        console.error("wtf, i is undefined");
-      // console.debug("For node ", i);
       for (j in Relationships[i]) {
-        // console.debug("neighbour ", j);
-        // if (!importantOnly || onPathToNamedNode(Relationships[i][j]))
+        // FIXME: sometimes i is undefined... Not sure why
         try {
           links.push({
             target: BaconMap[i].BaconID, 
             source: Relationships[i][j]
           })
         } catch (err) {
-          // trace();
-          console.log(err.stack);
-          console.log("error for node ", i, j);
+          console.error(err.stack);
+          console.error("error for node ", i, j);
         }
 
       }
     }
-    // console.debug("Generated links");
     links.forEach(function(link) {
       link.source = nodes[link.source] || (nodes[link.source] = {id: link.source, name: BaconMap[link.source].BaconName, generator: BaconMap[link.source].generator});
       link.target = nodes[link.target] || (nodes[link.target] = {id: link.target, name: BaconMap[link.target].BaconName, generator: BaconMap[link.target].generator});
     });
-    // console.log(nodes);
-    // console.log(links);
     return {nodes: nodes, links: links};
   }
 
-  function onPathToNamedNode(node) {
-    if ( BaconMap[node].BaconName )
-      return true;
-    var onPath = false;
-    for (child in Relationships[node]) {
-      onPath = onPath || onPathToNamedNode(Relationships[node][child]);
-    }
-    return onPath;
-  }
-
-  BaconTracer.drawRelationshipsForce = function(elementID, importantOnly) {
-    console.debug("will be drawing?");
+  BaconTracer.drawRelationshipsForce = function(elementID) {
+    var htmlElement = $(elementID);
     // Chart dimensions.
     var margin = {top: 30, right: 80, bottom: 30, left: 30},
-        width = 2400 - margin.right - margin.left,
-        height = 2000 - margin.top - margin.bottom;
-    console.debug("initialised");
-    var svg = d3.select("#"+elementID).append("svg")
-        .attr("width", (width+margin.right+margin.left)+"px")
-        .attr("height", (height+margin.top+margin.bottom)+"px");
-    console.debug("created svg");
+        width = htmlElement.width() - margin.right - margin.left,
+        height = htmlElement.height() - margin.top - margin.bottom;
+    var svg = d3.select(elementID).append("svg");
 
-    var data = BaconTracer.getRelationshipsPairs(importantOnly);
-    console.log("retrieved data:", data);
+    var data = BaconTracer.getRelationshipsPairs();
     var force = d3.layout.force()
         .nodes(d3.values(data.nodes))
         .links(data.links)
@@ -256,13 +218,12 @@
         .linkDistance(100)
         .charge(-600)
         .gravity(0.05)
-        // .alpha(200)
-        .theta(0.1)
+        .theta(0.1);
 
     var area = svg.append("g")
         .attr("transform", "translate(" + (margin.left) + "," + margin.top + ")")
         .attr("width", width)
-        .attr("height", height)    
+        .attr("height", height);
 
     var defs = area.append("svg:defs")
     var pathArea = area.append("svg:g")
@@ -272,8 +233,6 @@
     var path, circle, text;
 
     function restart(links, nodes) {
-        console.log("restarting");
-
         force.links(links);
         force.nodes(d3.values(nodes));
         force.on("tick", tick)
@@ -347,8 +306,8 @@
             rootNode.y = height/2;
             for (i in force.nodes())
             path.attr("d", function(d) {
-                // console.log("path", d);
                 var dx = d.source.x - d.target.x,
+                // Can also use curvature... choosing to use none
                 dy = 0,//d.source.y - d.target.y,
                 dr = 0;//Math.sqrt(dx * dx + dy * dy);
                 return "M" + d.target.x + "," + d.target.y + "A" + dr + "," + dr + " 0 0,1 " + d.source.x + "," + d.source.y;
@@ -367,22 +326,27 @@
     restart(links, nodes); 
   }
 
-  // NOTE: basically wrong, relationships between Observables does not necessarily (usually) form a tree
-  BaconTracer.getRelationshipsTree = function(startNode){
-    var nodeInfo = {};
-    nodeInfo.name = BaconMap[startNode].BaconName;
-    nodeInfo.nodeId = BaconMap[startNode].BaconID;
-    if (Relationships[startNode] && Relationships[startNode].length > 0) {
-      nodeInfo.children = [];
-      for (childNo in Relationships[startNode]) {
-        var child = Relationships[startNode][childNo];
-        nodeInfo.children.push(BaconTracer.getRelationshipsTree(child));
-      }
-    }
-    return nodeInfo;
-  }
-
 }).call(this);
+
+
+// A no-op forwarding Proxy Handleras proposed by Tom Van Cutsem
+
+// Copyright (C) 2010 Software Languages Lab, Vrije Universiteit Brussel
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// A no-op forwarding Proxy Handler
+// @author Tom Van Cutsem
 
 function ForwardingHandler(target) {
   this.target = target;

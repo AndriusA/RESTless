@@ -59,7 +59,7 @@ $().ready(function () {
     mouseUpES.BaconName = "mouseUpES";
     var foo = mouseUpES.merge(mouseDownES);
     foo.BaconName = "foo";
-    BaconTracer.drawRelationshipsForce("graph", true);
+    BaconTracer.drawRelationshipsForce("#graph");
 });
 
 function getDraggingDelta (delta, dragging) {

@@ -5,16 +5,19 @@
     <meta name="viewport" content="width=device-width">
 
     <style>
-
-    div {
+    #clickable-block{
         width:10em;
         height:10em;
         background: #F1C40F;
         position:absolute;
     }
+
+    #graph {
+      width: 100%;
+      height: 100%;
+    }
     div:hover { cursor: pointer; }
 
-    <style>
     svg {
       font: 10px sans-serif;
     }
@@ -22,46 +25,19 @@
     .label {
       font: 12px sans-serif;
     }
-
-    marker path{
-      fill: black;
-    }
-
-    .nodeName {
-      fill: white;
-      stroke: black;
-    }
-
-    .node circle {
-      cursor: pointer;
-      fill: #fff;
-      stroke: steelblue;
-      stroke-width: 1.5px;
-    }
-
-    .node text {
-      font-size: 11px;
-    }
-
-    path.link {
-      fill: none;
-      stroke: #ccc;
-      stroke-width: 1.5px;
-    }
-
-
     </style>
+    <link rel="stylesheet" href="../baconTracer.css">
+
 <body>
     <div id="graph"></div>
     <div id="clickable-block"></div>
 </body>
 
-    <script src="../lib/jquery.js"></script>
-    <script src="../lib/Bacon.js"></script>
-    <script src="../lib/Bacon.UI.js"></script>
-    <script src="../lib/lodash.min.js"></script>
-    <script src="../lib/d3.min.js"></script>
-    <script src="forwardingHandler.js"></script>
-    <script src="baconTracer.js"></script>
+    <script src="../../lib/jquery.js"></script>
+    <script src="../../lib/Bacon.js"></script>
+    <script src="../../lib/Bacon.UI.js"></script>
+    <script src="../../lib/lodash.min.js"></script>
+    <script src="../../lib/d3.min.js"></script>
+    <script src="../baconTracer.js"></script>
     <script src="clickablebox.js"></script>
 </html>    
