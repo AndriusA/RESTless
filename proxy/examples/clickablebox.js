@@ -29,13 +29,6 @@ $().ready(function () {
     deltas.BaconName = "deltas"
     console.log(deltas.BaconName, deltas.BaconInputs);
 
-    var bBus = new Bacon.Bus();
-    bBus.BaconName = "bBus";
-    console.log(bBus.BaconName, bBus.BaconInputs);
-    bBus.plug(deltas);
-    console.log(bBus.BaconName, bBus.BaconInputs);
-
-
     // Just like deltas, but [0,0] when user is not dragging the box.
     // Already returns a metaobject...
     var draggingDeltas = Bacon.combineWith(getDraggingDelta, deltas, blockDragging);
@@ -52,13 +45,22 @@ $().ready(function () {
     });
     console.log(blockPosition.BaconInputs);
 
-    //Experiment with EventStreams
-    var mouseDownES = block.asEventStream('mousedown').map(true);
-    mouseDownES.BaconName = "mouseDownES";
-    var mouseUpES = html.asEventStream('mouseup').map(false);
-    mouseUpES.BaconName = "mouseUpES";
-    var foo = mouseUpES.merge(mouseDownES);
-    foo.BaconName = "foo";
+    // Uncomment the lines below to see some more examples
+    // Experiment with Bus
+    // var bBus = new Bacon.Bus();
+    // bBus.BaconName = "bBus";
+    // console.log(bBus.BaconName, bBus.BaconInputs);
+    // bBus.plug(deltas);
+    // console.log(bBus.BaconName, bBus.BaconInputs);
+
+    // Experiment with EventStreams
+    // var mouseDownES = block.asEventStream('mousedown').map(true);
+    // mouseDownES.BaconName = "mouseDownES";
+    // var mouseUpES = html.asEventStream('mouseup').map(false);
+    // mouseUpES.BaconName = "mouseUpES";
+    // var foo = mouseUpES.merge(mouseDownES);
+    // foo.BaconName = "foo";
+    
     BaconTracer.drawRelationshipsForce("#graph");
 });
 

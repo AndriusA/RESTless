@@ -50,9 +50,9 @@
 
       if (typeof this.target[name] === "function") {
           if (this.target.isProxy) {
-            console.error("The target is a proxy (" + name + "). The target's ID is " + this.target.ObservableID + ". Should never get here");
+            console.error("The target is a proxy (" + name + ")... Should never get here");
             // Returning null will most likely break execution;
-            // otherwise risk runaway recursion
+            // but otherwise risk runaway recursion
             return null;
           }
           // Need a function proxy to deal with function invocations
@@ -240,7 +240,7 @@
         var rootNode = force.nodes()[0];
         
         var markers = defs.selectAll("marker")
-            .data(_.map(force.links(), function(d){ return d.target.id+"-"+d.source.id}), function(d){ return d;});
+            .data(force.links().map(function(d){ return d.target.id+"-"+d.source.id}), function(d){ return d;});
 
         markers.enter().append("marker")
                 .attr("class", "linkMarker")
