@@ -32,6 +32,7 @@
     var generator = undefined;
     
     handler.get = function(rcvr, name) {
+      // console.log("GET", name);
       if (name === "BaconName") {
         return BaconName;
       }
@@ -41,8 +42,17 @@
       if (name === "generator") {
         return generator;
       }
+      if (name === "isProxy") {
+        return true;
+      }
 
       if (typeof this.target[name] === "function") {
+          if (this.target.isProxy) {
+            console.error("The target is a proxy. FRAK", name);
+            console.error("The target's ID is", this.target.ObservableID);
+            console.error("should never get here");
+            return null;
+          }
           return BaconTracer.proxyFunction(this.target[name], name);
       }
 
@@ -52,12 +62,12 @@
     handler.set =  function(rcvr,name,val) {
       if (name === "BaconName") {
           BaconName = val;
-          console.debug("Setting name "+val+" for observable ID", BaconID);
+          // console.debug("Setting name "+val+" for observable ID", BaconID);
           return true;
       }
       if (name === "generator") {
         generator = val;
-        console.log("set generator to", generator, val);
+        // console.log("set generator to", generator);
         return true;
       }
       this.target[name]=val;
@@ -65,6 +75,11 @@
     };
 
     try {
+      // Don't wrap an object that's already a proxy...
+      if (target.isProxy) {
+        BaconMap[BaconID] = target;
+        return target;
+      }
       var proxy = Proxy.create(handler, Object.getPrototypeOf(target));
       BaconMap[BaconID] = proxy;
       return proxy;
@@ -86,25 +101,35 @@
         // Check if we want to encapsulate the result
         if (BaconInstance(targetFunResult)) {
           var proxy = BaconTracer.proxyObject(targetFunResult);
-          console.log(targetName);
+          // console.log(targetName);
           proxy.generator = targetName;
-          if (BaconInstance(this))
-            addRelationship(proxy.BaconID, this.BaconID);
-          for (arg in arguments){
-            var argument = arguments[arg];
-            if (BaconInstance(argument))
-              addRelationship(proxy.BaconID, argument.BaconID);
-          }
 
           // Special clause to deal with when EventStreams are created from HTML actions
           if (targetName === "asEventStream") {
-            console.log(this.selector, arguments, targetName)
+            // console.log(this.selector, arguments, targetName)
             var elementBaconID = counter++;
             BaconMap[elementBaconID] = {BaconID: elementBaconID, BaconName: this.selector, generator: arguments[0]};
             addRelationship(proxy.BaconID, elementBaconID);
             addRelationship(elementBaconID, 0);
           }
 
+          else if (targetName === "fromEventTarget") {
+            var elementBaconID = counter++;
+            BaconMap[elementBaconID] = {BaconID: elementBaconID, BaconName: this.selector, generator: arguments[0]};
+            addRelationship(proxy.BaconID, elementBaconID);
+            addRelationship(elementBaconID, 0);
+          }
+
+          // this.BaconID is the same as proxy.BaconID for valueOf method
+          if (BaconInstance(this) && proxy.BaconID != this.BaconID)
+            addRelationship(proxy.BaconID, this.BaconID);
+          for (arg in arguments){
+            var argument = arguments[arg];
+            if (BaconInstance(argument))
+              addRelationship(proxy.BaconID, argument.BaconID);
+          }
+          
+          // console.log(counter);
           return proxy;
         }
 
@@ -156,6 +181,10 @@
   }
 
   function addRelationship(target, source) {
+    if (typeof(source) === undefined)
+      console.error("source is undefined");
+    if (typeof(target) === undefined)
+      console.error("target is undefined");
     if (Relationships[source])
       Relationships[source].push(target)
     else 
@@ -163,23 +192,36 @@
   }
 
   BaconTracer.getRelationshipsPairs = function(importantOnly){
+    console.debug("Generate relationships graph");
     links = [];
     nodes = {};
     for (i in Relationships) {
+      if (typeof(i) === undefined)
+        console.error("wtf, i is undefined");
+      // console.debug("For node ", i);
       for (j in Relationships[i]) {
-        if (!importantOnly || onPathToNamedNode(Relationships[i][j]))
+        // console.debug("neighbour ", j);
+        // if (!importantOnly || onPathToNamedNode(Relationships[i][j]))
+        try {
           links.push({
             target: BaconMap[i].BaconID, 
             source: Relationships[i][j]
           })
+        } catch (err) {
+          // trace();
+          console.log(err.stack);
+          console.log("error for node ", i, j);
+        }
+
       }
     }
+    // console.debug("Generated links");
     links.forEach(function(link) {
       link.source = nodes[link.source] || (nodes[link.source] = {id: link.source, name: BaconMap[link.source].BaconName, generator: BaconMap[link.source].generator});
       link.target = nodes[link.target] || (nodes[link.target] = {id: link.target, name: BaconMap[link.target].BaconName, generator: BaconMap[link.target].generator});
     });
-    console.log(nodes);
-    console.log(links);
+    // console.log(nodes);
+    // console.log(links);
     return {nodes: nodes, links: links};
   }
 
@@ -194,22 +236,27 @@
   }
 
   BaconTracer.drawRelationshipsForce = function(elementID, importantOnly) {
-    var svg = d3.select("#"+elementID).append("svg")
-        .attr("width", "1400px")
-        .attr("height", "1000px");
+    console.debug("will be drawing?");
     // Chart dimensions.
     var margin = {top: 30, right: 80, bottom: 30, left: 30},
-        width = 1400 - margin.right - margin.left,
-        height = 1000 - margin.top - margin.bottom;
+        width = 2400 - margin.right - margin.left,
+        height = 2000 - margin.top - margin.bottom;
+    console.debug("initialised");
+    var svg = d3.select("#"+elementID).append("svg")
+        .attr("width", (width+margin.right+margin.left)+"px")
+        .attr("height", (height+margin.top+margin.bottom)+"px");
+    console.debug("created svg");
 
     var data = BaconTracer.getRelationshipsPairs(importantOnly);
+    console.log("retrieved data:", data);
     var force = d3.layout.force()
         .nodes(d3.values(data.nodes))
         .links(data.links)
         .size([width, height])
-        .linkDistance(50)
+        .linkDistance(100)
         .charge(-600)
         .gravity(0.05)
+        // .alpha(200)
         .theta(0.1)
 
     var area = svg.append("g")
@@ -260,10 +307,10 @@
 
 
         circle = nodesArea.selectAll("circle")
-                .data(force.nodes(), function(d) { return d.name; })
+                .data(force.nodes(), function(d) { return d.id })
 
         circle.enter().append("circle")
-                .attr("class", "nodeName")
+                .attr("class", function(d) { if (d.name && d.name.length > 0) return "namedNode"; else return "unnamedNode"; })
                 .attr("r", 6)
                 .call(force.drag);
 
@@ -276,10 +323,16 @@
         text.exit().remove();
 
         svgText.append("svg:text")
-            .attr("text-anchor", "center")
+            .attr("text-anchor", "middle")
             .attr("x", 10)
-            .attr("y", 10)
-            .text(function(d) { return (d.name ? d.name : d.id) + (d.generator ? " " + d.generator: "") });
+            .attr("y", 20)
+            .text(function(d) { return d.name || "" });
+        svgText.append("svg:text")
+            .attr("class", "generatorLabel")
+            .attr("text-anchor", "middle")
+            .attr("x", 0)
+            .attr("y", -10)
+            .text(function(d) { return d.generator || "" });
 
         force.start();
 
@@ -287,7 +340,7 @@
         function tick() {
             var nodes = force.nodes();
             for (i in nodes) {
-              if (nodes[i].name && (!Relationships[nodes[i].id] || Relationships[nodes[i].id].length === 0))
+              if ((!Relationships[nodes[i].id] || Relationships[nodes[i].id].length === 0))
                 nodes[i].x = width-margin.right;
             }
             rootNode.x = 0;
@@ -330,3 +383,92 @@
   }
 
 }).call(this);
+
+function ForwardingHandler(target) {
+  this.target = target;
+}
+
+ForwardingHandler.prototype = {
+  // Object.getOwnPropertyDescriptor(proxy, name) -> pd | undefined
+  getOwnPropertyDescriptor: function(name) {
+    var desc = Object.getOwnPropertyDescriptor(this.target);
+    desc.configurable = true;
+    return desc;
+  },
+
+  // Object.getOwnPropertyNames(proxy) -> [ string ]
+  getOwnPropertyNames: function() {
+    return Object.getOwnPropertyNames(this.target);
+  },
+  
+  // Object.defineProperty(proxy, name, pd) -> undefined
+  defineProperty: function(name, desc) {
+    return Object.defineProperty(this.target, name, desc);
+  },
+
+  // delete proxy[name] -> boolean
+  'delete': function(name) { return delete this.target[name]; },
+
+  // Object.{freeze|seal|preventExtensions}(proxy) -> proxy
+  fix: function() {
+    // As long as target is not frozen, the proxy won't allow itself to be fixed
+    // if (!Object.isFrozen(this.target)) // FIXME: not yet implemented
+    //     return undefined;
+    // return Object.getOwnProperties(this.target); // FIXME: not yet implemented
+    var props = {};
+    for (var name in this.target) {
+        props[x] = Object.getOwnPropertyDescriptor(this.target, name);
+    }
+    return props;
+  },
+
+  // name in proxy -> boolean
+  has: function(name) { return name in this.target; },
+
+  // ({}).hasOwnProperty.call(proxy, name) -> boolean
+  hasOwn: function(name) { return ({}).hasOwnProperty.call(this.target, name); },
+
+  // proxy[name] -> any
+  get: function(receiver, name) { return this.target[name]; },
+
+  // proxy[name] = val -> val
+  set: function(receiver, name, val) {
+    this.target[name] = val;
+    // bad behavior when set fails in non-strict mode
+    return true;
+  },
+
+  // for (var name in Object.create(proxy)) { ... }
+  enumerate: function() {
+    var result = [];
+    for (name in this.target) { result.push(name); };
+    return result;
+  },
+  
+  // for (var name in proxy) { ... }
+  iterate: function() {
+    var props = this.enumerate();
+    var i = 0;
+    return {
+      next: function() {
+        if (i === props.length) throw StopIteration;
+        return props[i++];
+      }
+    };
+  },
+
+  // Object.keys(proxy) -> [ string ]
+  enumerateOwn: function() { return Object.keys(this.target); },
+  keys: function() { return Object.keys(this.target); }
+};
+
+Proxy.wrap = function(obj) {
+  var handler = new ForwardingHandler(obj);
+  if (typeof obj === "object") {
+    return Proxy.create(handler, Object.getPrototypeOf(obj));
+  } else if (typeof obj === "function") {
+    return Proxy.createFunction(handler, obj);
+  } else {
+    throw "Can only wrap objects or functions, given: "+(typeof obj);
+  }
+}
