@@ -196,7 +196,7 @@ $(function() {
         peer.map('.name').assign($userName, "text")
         peer.map('.screen_name').assign($userHandle, "text")
         peer.map('.profile_image_url').assign($tweetImage, "attr", "src")
-        conversation.preview_message.map('.text').onValue(function (v) { $message.text(v) })
+        // conversation.preview_message.map('.text').onValue(function (v) { $message.text(v) })
         peer.map('.screen_name').assign($sender, "text")
 
         return {
@@ -219,7 +219,7 @@ $(function() {
         }
 
         function addConversation (conv, peer_id) {
-            // console.log("add conversation", conv)
+            console.log("add conversation", conv)
             // Also get the user from the usersModel to bind to view dynamically
             var get = usersModel.retrieveItem(peer_id)
             var user = usersModel.allUsers.map(get)
@@ -246,7 +246,11 @@ $(function() {
         function selectConversation(conversation) {
             console.log("conversation", conversation)    
             render(conversation.conversation, conversation.peer_id)
-            model.messageReceived.takeUntil(repaint).filter(function(message){ return message.peer_id === _.first(conversation).peer_id }).onValue(addMessage)
+            model.messageReceived.takeUntil(repaint).filter(
+                function(message){
+                    // console.log(message, conversation, _.first(conversation), _.first) 
+                    return message.peer_id === conversation.peer_id 
+                }).onValue(addMessage)
         }
 
         function render (messages, peer_id) {
@@ -260,6 +264,7 @@ $(function() {
             // Inject a new message into the model upon clicking "send"
             var sendMessage = chatElement.find('#chat-send').asEventStream('click').doAction(".preventDefault")
             sendMessage.onValue(function(){
+                console.log("sendMessage value", chatElement.find('#chat-form [name="peer_id"]').val())
                 model.sendMessages.plug(Bacon.once({
                     text: chatElement.find('#chat-form [name="message-content"]').val(),
                     peer_id: chatElement.find('#chat-form [name="peer_id"]').val(),
@@ -387,7 +392,7 @@ $(function() {
         // this.allTweets.changes().onValue(storage.writeTweets)
     }
 
-    function UserListModel() {
+    function UserListModel(tweetsModel) {
         function addItem(newItem) { return function(list) { 
             return _.reject(list, function(item) { return item.id_str === newItem.id_str }).concat([newItem]) 
         }}
@@ -410,10 +415,8 @@ $(function() {
         function filterEvents (message) { return _.has(message, 'event') }
         function getUserInfo (user_id_str) { return {type: "get", url: "https://api.twitter.com/1.1/users/show.json?screen_name=rsarver", data: {user_id: user_id_str} }}
 
-        this.twitterEvents = new Bacon.Bus()
-        this.twitterEvents.BaconName = "twitterEvents"
-        this.tweets = new Bacon.Bus()
-        this.tweets.BaconName = "tweets"
+        this.twitterEvents = tweetsModel.twitterEvents
+        this.tweets = tweetsModel.onlyTweets
         this.retrieveItem = retrieveItem
         this.updateUser = new Bacon.Bus()
         this.updateUser.BaconName = "updateUser"
@@ -452,7 +455,7 @@ $(function() {
         // this.allUsers.log("user")
     }
 
-    function DMListModel() {
+    function DMListModel(tweetsModel) {
         // function matchConversation(peer_id, message) { return message.sender_id_str === peer_id || message.recipient_id_str === peer_id }
         function addPeer(message) {
             var peer_id = isOwnID(message.sender_id_str) ? message.recipient_id_str : message.sender_id_str
@@ -468,17 +471,19 @@ $(function() {
         function filterDirectMessages (message) { return _.has(message, 'direct_message') }
         function unwrap (message) { return message.direct_message }
         function sendMessage(message) {
+            console.log("Seng message", message)
             var rMessage = _.extend(_.clone(message), {user_id: message.peer_id})
             return {type: "post", url: "https://api.twitter.com/1.1/direct_messages/new.json", data: _.pick(rMessage, 'user_id', 'text')}
         }
         function previewMessage (message) {
+            console.log("preview message", message);
             return _.extend(_.clone(message), 
                     {created_at: moment().format("ddd MMM DD HH:mm:ss Z YYYY"), 
                      sender: {screen_name: "AndriusAuc"}})
         }
 
-        this.twitterEvents = new Bacon.Bus();
-        this.twitterEvents.BaconName = "twitterEvents";
+        this.twitterEvents = tweetsModel.twitterEvents;
+        // this.twitterEvents.BaconName = "twitterEvents-DM";
         this.showConversation = new Bacon.Bus();
         this.showConversation.BaconName = "showConversation";
         this.sendMessages = new Bacon.Bus();
@@ -517,9 +522,9 @@ $(function() {
         requests.BaconName = "Requests"
         tweetsModel.networkRequests//.log("tweet request: ")
 
-        requests.onValue(function(request){
-            console.log("network request", request);
-            ws.send(JSON.stringify(request));
+        // requests.map(JSON.stringify).log("request").map(ws.send)
+        requests.map(JSON.stringify).onValue(function(request){
+            ws.send(request);
         })
 
         return wsEvents;
@@ -527,8 +532,8 @@ $(function() {
 
     function TwitterApp() {
         var tweetsModel = new TweetListModel()
-        var usersModel = new UserListModel()
-        var messagesModel = new DMListModel()
+        var usersModel = new UserListModel(tweetsModel)
+        var messagesModel = new DMListModel(tweetsModel)
 
         var hash = Bacon.UI.hash("#/")
         FilterView($("#filters"), hash)
@@ -562,9 +567,12 @@ $(function() {
         
         // Plug both complete twitter stream (for follows/unfollows, etc.)
         // and filtered only tweets - this model should not have to know how to filter for tweets
-        usersModel.twitterEvents.plug(tweetsModel.twitterEvents)
-        usersModel.tweets.plug(tweetsModel.onlyTweets)
-        messagesModel.twitterEvents.plug(tweetsModel.twitterEvents)
+        // usersModel.twitterEvents = tweetsModel.twitterEvents
+        // usersModel.tweets.plug(tweetsModel.onlyTweets)
+        // messagesModel.twitterEvents = tweetsModel.twitterEvents
+        // usersModel.twitterEvents.plug(tweetsModel.twitterEvents)
+        // usersModel.tweets.plug(tweetsModel.onlyTweets)
+        // messagesModel.twitterEvents.plug(tweetsModel.twitterEvents)
     }
 
     TwitterApp()
