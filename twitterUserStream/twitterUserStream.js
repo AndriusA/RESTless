@@ -117,6 +117,7 @@ $(function() {
         }
 
         function addBuffered(tweets) {
+            console.log("add buffered", tweets)
             var frag = $(document.createDocumentFragment())
             var newAdd = _.partial(addTweet, frag)
             _.each(tweets, newAdd)
@@ -143,9 +144,7 @@ $(function() {
             view.BaconName = "TweetFormView";
             listElement.append(view.element)
             view.tweetText.BaconName = "TweetFormText";
-            model.postedTweets.plug(Bacon.combineTemplate({
-                status: view.tweetText
-            }))
+            model.postedTweets.plug(view.tweetText.map(function(d){ return {status: d}; }))
         }
 
     }
@@ -321,7 +320,7 @@ $(function() {
 
     // MODELS
 
-    function TweetListModel() {
+    function TweetListModel(networkEvents) {
         function addItem(newItem) { return function(list) { return list.concat([newItem]) }}
         function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
         var irrelephantTweetFields = ['id', 'source', 'truncated', 'filter_level', 'lang', 'possibly_sensitive']
@@ -365,10 +364,11 @@ $(function() {
             return newTweet;
         }
 
-        this.twitterEvents = new Bacon.Bus()
+        this.twitterEvents = networkEvents;
         this.twitterEvents.BaconName = "twitterEvents";
-        this.deletedTweets = new Bacon.Bus()
+        this.deletedTweets = this.twitterEvents.filter(filterTweetDeletions)
         this.deletedTweets.BaconName = "deletedTweets";
+        
 
         this.postedTweets = new Bacon.Bus()
         this.postedTweets.BaconName = "postedTweets";
@@ -382,7 +382,6 @@ $(function() {
                         .map(cleanupTweet)
                         .map(cleanupRetweet)
         this.tweets.BaconName = "tweets";
-        this.deletedTweets.plug(this.twitterEvents.filter(filterTweetDeletions))
         var tweetChanges = this.tweets.map(addItem)
                         .merge(this.deletedTweets.map(removeItem))
         tweetChanges.BaconName = "tweetChanges";
@@ -413,7 +412,7 @@ $(function() {
         }}
         // function filterFriendsLists (message) { return _.has(message, 'friends') }
         function filterEvents (message) { return _.has(message, 'event') }
-        function getUserInfo (user_id_str) { return {type: "get", url: "https://api.twitter.com/1.1/users/show.json?screen_name=rsarver", data: {user_id: user_id_str} }}
+        // function getUserInfo (user_id_str) { return {type: "get", url: "https://api.twitter.com/1.1/users/show.json?screen_name=rsarver", data: {user_id: user_id_str} }}
 
         this.twitterEvents = tweetsModel.twitterEvents
         this.tweets = tweetsModel.onlyTweets
@@ -421,10 +420,11 @@ $(function() {
         this.updateUser = new Bacon.Bus()
         this.updateUser.BaconName = "updateUser"
 
-        this.getUserInfo = new Bacon.Bus()
-        this.getUserInfo.BaconName = "getUserInfo"
-        this.networkRequests = this.getUserInfo.map(getUserInfo)
-        this.networkRequests.BaconName = "networkRequests";
+        // this.getUserInfo = new Bacon.Bus()
+        // this.getUserInfo.BaconName = "getUserInfo"
+
+        // this.networkRequests = this.getUserInfo.map(getUserInfo)
+        // this.networkRequests.BaconName = "networkRequests";
 
         var retweetUserInfo = this.tweets.flatMap(function(tweet){
             if (tweet.hasOwnProperty('retweeted_status')) return Bacon.once(tweet.retweeted_status.user) // Is a retweet
@@ -501,37 +501,32 @@ $(function() {
         this.allMessages.BaconName = "allMessages";
     }
 
-    function networkRequests(tweetsModel, usersModel, messagesModel) {
-        // Connect to the websocket backend
-        var ws = new WebSocket("ws://127.0.0.1:6969")
-        ws.onopen = function() { console.log("Websocket connection opened"); }
+    function networkEvents(ws) {
         var i = 0;
-
         // @wsEvents
         var wsEvents = Bacon.fromEventTarget(ws, "message").map(".data").map(JSON.parse).flatMap( function(e) {
             i = i + 1;
             return Bacon.later(i*0, e);
         })
         wsEvents.BaconName = "Websocket Events"
-
-        // wsEvents.log("event")
-
+        return wsEvents;
+    }
+    function networkRequests(ws, tweetsModel, usersModel, messagesModel) {
         var requests = messagesModel.networkRequests
-                            .merge(usersModel.networkRequests)
+                            // .merge(usersModel.networkRequests)
                             .merge(tweetsModel.networkRequests)
         requests.BaconName = "Requests"
-        tweetsModel.networkRequests//.log("tweet request: ")
 
         // requests.map(JSON.stringify).log("request").map(ws.send)
         requests.map(JSON.stringify).onValue(function(request){
             ws.send(request);
         })
-
-        return wsEvents;
     }
 
     function TwitterApp() {
-        var tweetsModel = new TweetListModel()
+        var ws = wsConnection();
+        var netEvents = networkEvents(ws);
+        var tweetsModel = new TweetListModel(netEvents)
         var usersModel = new UserListModel(tweetsModel)
         var messagesModel = new DMListModel(tweetsModel)
 
@@ -555,15 +550,12 @@ $(function() {
             else if (h === "#/users") UserListView($("#user-list"), usersModel, hash, selectedList)    
             else ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
         })
-        TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
+        // TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
         UserListView($("#user-list"), usersModel, hash, selectedList)
         ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
         ChatView($("#message-list"), $("#chat"), messagesModel, usersModel, hash)
 
-        var netRequests = networkRequests(tweetsModel, usersModel, messagesModel)
-
-        // @twitterEvents <- @wsEvents
-        tweetsModel.twitterEvents.plug( netRequests )
+        var netRequests = networkRequests(ws, tweetsModel, usersModel, messagesModel)
         
         // Plug both complete twitter stream (for follows/unfollows, etc.)
         // and filtered only tweets - this model should not have to know how to filter for tweets
@@ -580,6 +572,11 @@ $(function() {
         BaconTracer.drawRelationshipsForce("#graph")    
     }, 1000)
     
+    function wsConnection() {
+        var ws = new WebSocket("ws://127.0.0.1:6969")
+        ws.onopen = function() { console.log("Websocket connection opened"); }
+        return ws;
+    }
 
 })
 
