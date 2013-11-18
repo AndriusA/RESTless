@@ -12,9 +12,67 @@
     <![endif]-->
 </head>
 <body>
+    <section id="twitterApp">
+    </section>
+    <script id="twitterAppTemplate" type="ractive">
+        <section id="chat" class="{{^currentConversation}}invisible{{/currentConversation}}">
+            <div>
+                <ul id="message-list" class="view-list">
+                {{#currentConversation:i}}
+                    {{>directMessage}}
+                {{/currentConversation}}
+                </ul>
+                <form class="form-inline" id="chat-form" on-submit="chatSend">
+                    <input type="text" placeholder="Enter message" name="message-content" class="input-small" value="{{chatText}}">
+                    <input type="hidden" name="peer_id" value="{{currentConversationId}}"><!--901470308-->
+                    <button type="submit" class="btn" id="chat-send">send</span>
+                </form>
+            </div>
+        </section>
 
+        <div class="container">
+        <header id="header">
+            <h1>tweets</h1>
+            <div id="menu-header">
+                <span id="tweet-count"><strong>{{sectionItemCount}}</strong> retrieved</span>
+                <ul id="filters">
+                    <li>
+                        <a href="#/" on-click='selectList' class='{{ currentlyVisible === 'tweets' ? 'selected' : '' }}'>Tweets</a>
+                    </li>
+                    <li>
+                        <a href="#/dm" on-click='selectList' class='{{ currentlyVisible === 'conversations' ? 'selected' : '' }}'>Direct Messages</a>
+                    </li>
+                    <li>
+                        <a href="#/users" on-click='selectList' class='{{ currentlyVisible === 'users' ? 'selected' : '' }}'>User Info</a>
+                    </li>
+                </ul>
+            </div>
+        </header>
+        <section id="main">
+            <div class="container-fluid" id="views">
+                <ul id="tweet-list" class="view-list {{ currentlyVisible !== 'tweets' ? 'invisible' : '' }}">
+                {{>tweetForm}}
+                {{#tweets:i}}
+                    {{>tweet}}
+                {{/tweets}}
+                </ul>
 
-  <script type="text/html" id="tweet-template">
+                <ul id="conversation-list" class="view-list {{ currentlyVisible !== 'conversations' ? 'invisible' : '' }}">
+                {{#conversations:i}}
+                    {{>conversation}}
+                {{/conversations}}
+                </ul>
+
+                <ul id="user-list" class="view-list {{ currentlyVisible !== 'users' ? 'invisible' : '' }}">
+                {{#users:i}}
+                    {{>user}}
+                {{/users}}
+                </ul>
+            </div>
+        </section>
+        </div>    
+
+<!-- {{>tweet}} -->
     <li id="{{id_str}}">
       <div class="view tweet">
         <div class="tweetImage">
@@ -29,15 +87,14 @@
                 {{{text}}}
             </div>
             <div class="tweetFooter">
-            <i class="icon-time"></i> {{dateFormat created_at format="HH:mm:ss MMMM Do"}}
+            <i class="icon-time"></i> {{created_at}}
             </div>
         </div>
       </div>
     </li>
-  </script>
+<!-- {{/tweet}} -->
 
-
-  <script type="text/html" id="user-template">
+<!-- {{>user}} -->
     <li id="{{id_str}}">
       <div class="view user" id="{{id_str}}">
         <div class="user-header">
@@ -52,32 +109,32 @@
         </div>
       </div>
     </li>
-  </script>
+<!-- {{/user}} -->
 
-  <script type="text/html" id="conversation-template">
-    <li id="{{peer_id}}">
-      <div class="view conversation">
+<!-- {{>conversation}} -->
+    <li id="{{peer_id}}" on-click="showConversation">
+      <div class="view conversation" >
         <div class="user-header">
-             <span class="userName">{{sender.name}}</span>
-             @<span class="userHandle">{{sender.screen_name}}</span>
+             <span class="userName">{{peer.name}}</span>
+             @<span class="userHandle">{{peer.screen_name}}</span>
         </div>
-        <div class="user-avatar"><img src="" alt={{sender.name}}></div>
+        <div class="user-avatar"><img src="{{peer.profile_image_url}}" alt="{{peer.name}}"></div>
             <span class="sender">
-                {{sender_screen_name}}
+                {{messagePreview.sender_screen_name}}
             </span>:
             <span class="message-text">
-                {{text}}
+                {{messagePreview.text}}
             </span>
         <div class="conversation-footer"></div>
       </div>
     </li>
-  </script>
+<!-- {{/conversation}} -->
 
-  <script type="text/html" id="message-template">
+<!-- {{>directMessage}} -->
     <li id="{{peer_id}}">
       <div class="view message" id="{{id_str}}">
         <div class="message-header">
-            {{dateFormat created_at format="HH:mm:ss MMMM Do"}}
+            <!--{{dateFormat created_at format="HH:mm:ss MMMM Do"}}-->
         </div>
         <div class="message-text">
             <div>@{{sender.screen_name}}:</div>
@@ -86,67 +143,21 @@
         <div class="conversation-footer"></div>
       </div>
     </li>
-  </script>
+<!-- {{/directMessage}} -->
 
-    <script type="text/html" id="tweet-form-template">
+<!-- {{>tweetForm}} -->
         <li>
         <div id="tweet-form">
-            <form class="form-inline">
-                <textarea rows="2" maxlength="140" placeholder="Your tweet" name="tweet" class="input-small" width="75%" id="tweet-form-text"></textarea>
+            <form class="form-inline" on-submit="tweetSend">
+                <textarea rows="2" maxlength="140" placeholder="Your tweet" name="tweet" class="input-small" width="75%" id="tweet-form-text" value={{tweetText}}></textarea>
 
                 <button type="submit" class="btn btn-large" width="20%"><img src="twitter-bird-light-bgs.png" alt="tweet"/></button>
             </form>
         </div>
         </li>
+<!-- {{/tweetForm}} -->
+    
     </script>
-
-    <section id="twitterapp">
-        <section id="chat" class="invisible">
-            <div>
-                <ul id="message-list" class="view-list">
-                </ul>
-                <form class="form-inline" id="chat-form">
-                    <input type="text" placeholder="Enter message" name="message-content" class="input-small">
-                    <input type="hidden" name="peer_id" value="901470308">
-                    <button type="submit" class="btn" id="chat-send">send</span>
-                </form>
-            </div>
-        </section>
-
-        <div class="container">
-        <header id="header">
-            <h1>tweets</h1>
-            <div id="menu-header">
-                <span id="tweet-count"><strong>0</strong> retrieved</span>
-                <ul id="filters">
-                    <li>
-                        <a href="#/">Tweets</a>
-                    </li>
-                    <li>
-                        <a href="#/dm">Direct Messages</a>
-                    </li>
-                    <li>
-                        <a href="#/users">User Info</a>
-                    </li>
-                </ul>
-            </div>
-        </header>
-        <section id="main">
-            <div class="container-fluid" id="views">
-                <ul id="tweet-list" class="view-list">
-                </ul>
-
-                <ul id="conversation-list" class="view-list">
-                </ul>
-
-                <ul id="user-list" class="view-list">
-                </ul>
-            </div>
-        </section>
-        </div>
-       
-        
-    </section>
 
     <footer id="info">
         <p>Twitter Stream with BaconJS example</p>
@@ -155,16 +166,13 @@
     </footer>
 
 
-    <script src="../lib/jquery.js"></script>
     <script src="js/lodash.min.js"></script>
-    <script src="js/handlebars.js"></script>
-    <script src="js/jquery-hashchange-min.js"></script>
-    <script src="js/moment.min.js"></script>
+    <!--<script src="js/jquery-hashchange-min.js"></script>-->
     <script src="../lib/Bacon.js"></script>
-    <script src="../lib/Bacon.UI.js"></script>
-    <script src="../lib/d3.min.js"></script>
-    <script src="../proxy/baconTracer.js"></script>
-
+    <!--<script src="../lib/Bacon.UI.js"></script>-->
+    <script src="../Ractive/build/Ractive.js"></script>
+    <!--<script src="../proxy/baconTracer.js"></script>-->
+    <script src="twitterUserStream-views.js"></script>
     <script src="twitterUserStream.js"></script>
 </body>
 </html>

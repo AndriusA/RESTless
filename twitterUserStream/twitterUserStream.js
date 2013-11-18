@@ -1,6 +1,7 @@
-$(function() {
-    var Bacon = BaconTracer.proxyObject(window.Bacon);
+(function() {
+    // var Bacon = BaconTracer.proxyObject(window.Bacon);
     Bacon.BaconName = "TopBacon";
+    // console.debug = function() {};
     // Recursively remove null or empty (arrays or objects) fields
     function compactObject(o) {
         _.each(o, function(v, k){
@@ -13,450 +14,165 @@ $(function() {
         return o;
     }
 
-    Handlebars.registerHelper('dateFormat', function(context, block) {
-        if (window.moment) {
-            var f = block.hash.format || "HH:mm:ss MMMM Do";
-            return moment(context, "ddd MMM DD HH:mm:ss Z YYYY").format(f);
-        } else {
-            return context;   //  moment plugin not available. return data as is.
-        }
-    });
-
     // FIXME: Nasty hack, hardcoded
     function isOwnID(id) {
         return id === "82142104"
     }
 
-    function renderEntities(tweet) {
-        var newTweet = _.clone(tweet)
-        newTweet = _.reduce(tweet.entities.urls, function(tweet, url) { return renderURL(tweet, url) }, newTweet)
-        newTweet = _.reduce(tweet.entities.user_mentions, function(tweet, mention) { return renderUserMentions(tweet, mention) }, newTweet)
-        newTweet = _.reduce(tweet.entities.hashtags, function(tweet, hash) { return renderHash(tweet, hash) }, newTweet)
-        newTweet = _.reduce(tweet.entities.media, function(tweet, media) { return renderMedia(tweet, media) }, newTweet)
-        return newTweet;
-    
-        function renderURL(tweet, url) {
-            return _.extend(_.clone(tweet), 
-                {text: tweet.text.replace(url.url, "<a href='"+url.expanded_url+"'>"+url.display_url+"</a>")})
-        }
-
-        function renderMedia(tweet, media) {
-            return _.extend(_.clone(tweet), 
-                {text: tweet.text.replace(media.url, "<a href='"+media.media_url_https+"'>"+media.display_url+"</a>")})
-        }
-
-        function renderHash(tweet, hash) {
-             return _.extend(_.clone(tweet), 
-                {text: tweet.text.replace("#"+hash.text, "<a href='https://twitter.com/search?q=%23"+hash.text+"&src=hash'>#"+hash.text+"</a>")})
-        }
-
-        function renderUserMentions(tweet, user) {
-            // Need the damn regexp because twitter is not consistent in the json representation of mentions and in text
-            var re = new RegExp("@"+user.screen_name, "gi")
-            return _.extend(_.clone(tweet), 
-                {text: tweet.text.replace(re, "<a href='https://twitter.com/"+user.screen_name+"'>@"+user.screen_name+"</a>")})
-        }
-    }
-
-    var tweetTemplate = Handlebars.compile($("#tweet-template").html())
-    var userTemplate = Handlebars.compile($("#user-template").html())
-    var conversationTemplate = Handlebars.compile($("#conversation-template").html())
-    var messageTemplate = Handlebars.compile($("#message-template").html())
-
-    // VIEWS
-    // user gets passed as a property - hook up the changes to template here
-    function TweetView(tweet, user) {
-        var renderedTweet = renderEntities(tweet)
-        // console.log("tweet view", renderedTweet)
-        var tweetElement = $(tweetTemplate(_.extend(renderedTweet, {'user': user}) ))
-        var $header = tweetElement.find(".tweetHeader")
-        var $userName = $header.find(".userName")
-        var $userHandle = $header.find(".userHandle")
-        var $tweetImage = tweetElement.find(".tweetImage img")
-        var $userLink = $header.find("a")
-
-        user.map('.name')/*.log("forName, assign")*/.assign($userName, "text")
-        user.map('.screen_name').assign($userHandle, "text")
-        user.map('.screen_name').map(function(name){ return "https://twitter.com/"+name}).assign($userLink, "attr", "href")
-        user.map('.profile_image_url').assign($tweetImage, "attr", "src")
-
-        // console.log(tweetElement)
-
-        return {
-            element: tweetElement,
-        }
-    }
-
-    function TweetFormView() {
-        var tweetTemplate = Handlebars.compile($("#tweet-form-template").html())
-        var tweetElement = $(tweetTemplate())
-
-        return {
-            element: tweetElement,
-            tweetText: Bacon.UI.textFieldValue(tweetElement.find('#tweet-form-text'))
-                        .sampledBy(tweetElement.find("#tweet-form button").asEventStream("click").doAction(".preventDefault"))
-        }
-    }
-
-    function TweetListView(listElement, model, usersModel, hash, selectedList) {
-        // var repaint = model.deletedTweets
-        var repaint = Bacon.once()
-        repaint.map(selectedList).onValue(render)
-        repaint.BaconName = "repaint"
-
-        // model.tweets.onValue(function(tweet) { addTweet(listElement, tweet) })
-        // Instead of adding each tweet as it comes in, buffer them for 10ms and add in batch through a DocumentFragment
-        model.tweets.bufferWithTime(100).onValue(addBuffered)
-        model.deletedTweets.onValue(function(tweet) { deleteTweet(tweet) })
-
-        function render(tweets) {
-            console.log("Full list render")
-            listElement.children().remove()
-            addTweetForm()
-            _.each(tweets, addTweet)
-        }
-
-        function addBuffered(tweets) {
-            console.log("add buffered", tweets)
-            var frag = $(document.createDocumentFragment())
-            var newAdd = _.partial(addTweet, frag)
-            _.each(tweets, newAdd)
-            frag.insertAfter(listElement.children()[0])
-            // listElement.insertAfter(frag, listElement.children()[0])
-        }
-
-        function addTweet(element, tweet) {
-            var get = usersModel.retrieveItem(tweet.user_id_str)
-            var user = usersModel.allUsers.map(get).takeUntil(repaint).skipDuplicates()
-            user.BaconName = "user_ADDTWEET"
-            var view = TweetView(tweet, user)
-            element.prepend(view.element)
-            // views[tweet.id_str] = view
-            // model.tweetDeleted.plug(view.destroy.takeUntil(repaint))
-        }
-
-        function deleteTweet(tweet) {
-            listElement.find("#"+tweet.delete.status.id_str).remove()
-        }
-
-        function addTweetForm() {
-            var view = TweetFormView()
-            view.BaconName = "TweetFormView";
-            listElement.append(view.element)
-            view.tweetText.BaconName = "TweetFormText";
-            model.postedTweets.plug(view.tweetText.map(function(d){ return {status: d}; }))
-        }
-
-    }
-
-    function UserView(user) {
-        var userElement = $(userTemplate(user))
-        return {
-            element: userElement
-        }
-    }
-
-    function UserListView(listElement, model, hash, selectedList) {
-        var repaint = Bacon.once()
-        repaint.map(selectedList).map(render)
-        repaint.BaconName = "repaint";
-
-        model.userAdded.onValue(processUser)
-
-        function render(users) {
-            listElement.children().remove()
-            // console.log("render", users)
-            _.each(users, addUser)
-        }
-
-        function processUser(user) {
-            listElement.find("#"+user.id_str).remove()
-            addUser(user)
-        }
-
-        function addUser(user) {
-            var view = UserView(user)
-            listElement.append(view.element)
-        }
-    }
-
-    function ConversationPreview(conversation, peer) {
-        // console.log("conversation", conversation)
-        var conversationElement = $(conversationTemplate(conversation))
-
-        // Get the elements that are bound to properties dynamically
-        var $message = conversationElement.find(".conversation .message-text")
-        var $sender = conversationElement.find(".conversation .sender")
-        var $userName = conversationElement.find(".conversation .user-header .userName")
-        var $userHandle = conversationElement.find(".conversation .user-header .userHandle")
-        var $tweetImage = conversationElement.find(".conversation .user-avatar img")
-
-        // Map the properties to HTML elements
-        peer.map('.name').assign($userName, "text")
-        peer.map('.screen_name').assign($userHandle, "text")
-        peer.map('.profile_image_url').assign($tweetImage, "attr", "src")
-        // conversation.preview_message.map('.text').onValue(function (v) { $message.text(v) })
-        peer.map('.screen_name').assign($sender, "text")
-
-        return {
-            element: conversationElement,
-            chosen: conversationElement.asEventStream("click")
-        }
-    }
-
-    function ConversationListView(listElement, model, usersModel, hash, selectedList) {
-        console.log("Conversation List View")
-        var repaint = Bacon.once()
-        repaint.BaconName = "repaintConversationList"
-        model.allMessages.onValue(render)
-
-
-        function render (messages) {
-            // console.log("render", messages)
-            listElement.children().remove()
-            _.each(_.groupBy(messages, 'peer_id'), addConversation)
-        }
-
-        function addConversation (conv, peer_id) {
-            console.log("add conversation", conv)
-            // Also get the user from the usersModel to bind to view dynamically
-            var get = usersModel.retrieveItem(peer_id)
-            var user = usersModel.allUsers.map(get)
-            // conv.property.onValue(function(c) { console.log("aa", c) })
-            var view = ConversationPreview(_.last(conv), user)
-            view.chosen.BaconName = "ConversationChosen"
-            listElement.prepend(view.element)
-            model.showConversation.plug(view.chosen.map({peer_id: peer_id, conversation: conv}))
-        }
-    }
-
-    function MessageView(message) {
-        var messageElement = $(messageTemplate(message))
-        return {
-            element: messageElement,
-        }
-    }
-
-    function ChatView(listElement, chatElement, model, usersModel, hash) {
-        var repaint = model.showConversation
-        repaint.onValue(selectConversation)
-        hash.onValue(function(){ chatElement.addClass("invisible") })
-
-        function selectConversation(conversation) {
-            console.log("conversation", conversation)    
-            render(conversation.conversation, conversation.peer_id)
-            model.messageReceived.takeUntil(repaint).filter(
-                function(message){
-                    // console.log(message, conversation, _.first(conversation), _.first) 
-                    return message.peer_id === conversation.peer_id 
-                }).onValue(addMessage)
-        }
-
-        function render (messages, peer_id) {
-            console.log("Render messages:", messages)
-            listElement.children().remove()
-            chatElement.removeClass("invisible")
-            chatElement.find('#chat-form [name="peer_id"]').val(peer_id)
-
-            _.each(messages, addMessage)
-
-            // Inject a new message into the model upon clicking "send"
-            var sendMessage = chatElement.find('#chat-send').asEventStream('click').doAction(".preventDefault")
-            sendMessage.onValue(function(){
-                console.log("sendMessage value", chatElement.find('#chat-form [name="peer_id"]').val())
-                model.sendMessages.plug(Bacon.once({
-                    text: chatElement.find('#chat-form [name="message-content"]').val(),
-                    peer_id: chatElement.find('#chat-form [name="peer_id"]').val(),
-                    recipient: { screen_name: chatElement.find('#chat-form [name="peer_id"]').val() },
-                    sender_screen_name: "AndriusAuc",
-                    id_str: "0AndriusAuc"
-                }))                
-            })
-        }
-
-        function addMessage(message) {
-            var view = MessageView(message)
-            // Rely on no reordering in twitter streaming API: the first message that comes in will be the
-            // restreamed message submitted by msyelf
-            if (listElement.find("#0"+message.sender_screen_name).first().length > 0) {
-                console.log("will remove ", listElement.find("#0"+message.sender_screen_name).first())
-                listElement.find("#0"+message.sender_screen_name).first().parent().remove()
-            }
-            listElement.append(view.element)
-        }
-    }
-
-    function FilterView(element, hash) {
-        hash.onValue(function(hash) {
-          element.find("a").each(function() {
-            var link = $(this)
-            link.toggleClass("selected", link.attr("href") === hash)
-          })
-        })
-    }
-
-    function SelectView(element, hash) {
-        var selectedView = hash.decode({
-            "#/": "tweet-list",
-            "#/dm": "conversation-list",
-            "#/users": "user-list"
-        })
-        selectedView.BaconName = "selectedView";
-        selectedView.onValue(function(id) {
-          element.find("ul").each(function() {
-            var view = $(this)
-            view.toggleClass("invisible", view.attr("id") !== id)
-          })
-        })
-    }
-
-    function ItemCountView(element, hash, selectedList) {
-        var itemCount = selectedList.map(".length").map(function(count) {
-            return "<strong>" + count + "</strong>" + ((count === 1) ? " item" : " items")
-        })
-        itemCount.BaconName = "itemCount"
-        itemCount.assign(element, "html")
-    }
-
     // MODELS
-
     function TweetListModel(networkEvents) {
-        function addItem(newItem) { return function(list) { return list.concat([newItem]) }}
-        function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
-        var irrelephantTweetFields = ['id', 'source', 'truncated', 'filter_level', 'lang', 'possibly_sensitive']
-        function removeTweetIrrelephantFields(irrelephantTweetFields, tweet) { return _.omit(tweet, irrelephantTweetFields) }
-        var removeIrrelevant = _.partial(removeTweetIrrelephantFields, irrelephantTweetFields)
-        function filterTweets (message) { return _.has(message, 'retweeted') }
-        function filterTweetDeletions (message) { return _.has(message, 'delete') && _.has(message['delete'], 'status') }
-        // Compose functions - chain the functions so that one is applied to the results of the other
-        var cleanupTweet = _.compose(compactObject, removeIrrelevant, removeTweetUserInfo, _.clone)
-        function postTweet(message) {
-            console.log("post", message)
-            return {type: "post", url: "https://api.twitter.com/1.1/statuses/update.json",
-                    data: {
-                        status: message.status,   //required
-                        in_reply_to_status_id: message.in_reply_to_status_id, //optional
-                        lat: null,      //optional
-                        long: null,     //optional
-                        place_id: null, //optional  A place in the world. These IDs can be retrieved from GET geo/reverse_geocode
-                        display_coordinates: null,  //optional
-                        trim_user: true,    //optional - When set to either true, t or 1, each tweet returned in a timeline will include a user object including only the status authors numerical ID.
-                    }}
+        function addItem(newItem) { 
+            return function(list) { return [newItem].concat(list) }
         }
-
-        function removeTweetUserInfo (tweet) {
-            var newTweet = _.clone(tweet);
-            if (_.has(tweet, 'user') && _.has(tweet['user'], 'id_str')) {
-                newTweet['user_id_str'] = tweet['user']['id_str'];
-                newTweet['user'] = null;
+        function removeItem(deletedItem) { 
+            return function(list) { 
+                return _.reject(list, function(item) { 
+                    return item.id_str === deletedItem.delete.status.id_str
+                }) 
             }
-            return newTweet;
+        }
+        function removeTweetIrrelevantFields(irrelevantTweetFields, tweet) { 
+            return _.omit(tweet, irrelevantTweetFields) 
+        }
+        var irrelevantTweetFields = [
+            'id', 
+            'source',
+            'truncated',
+            'filter_level',
+            'lang',
+            'possibly_sensitive'
+        ]
+        var removeIrrelevant = _.partial(removeTweetIrrelevantFields, irrelevantTweetFields)
+        function filterTweets (message) { 
+            return _.has(message, 'retweeted') 
+        }
+        function filterTweetDeletions (message) { 
+            return _.has(message, 'delete') && _.has(message['delete'], 'status')
+        }
+        // Compose functions - chain the functions so that one is applied to the results of the other
+        var cleanupTweet = _.compose(compactObject, removeIrrelevant, _.clone)
+        function postTweet(message) {
+            return {
+                type: "post",
+                url: "https://api.twitter.com/1.1/statuses/update.json",
+                data: {
+                    status: message.status,   //required
+                    in_reply_to_status_id: message.in_reply_to_status_id, //optional
+                    lat: null,      //optional
+                    long: null,     //optional
+                    place_id: null, //optional  A place in the world. These IDs can be retrieved from GET geo/reverse_geocode
+                    display_coordinates: null,  //optional
+                    trim_user: true,    //optional - When set to either true, t or 1, each tweet returned in a timeline will include a user object including only the status authors numerical ID.
+                }
+            }
         }
 
         function cleanupRetweet (tweet) {
             var newTweet = _.clone(tweet);
             if (_.has(tweet, 'retweeted_status')) {
-                newTweet.retweeted_status = _.clone(tweet.retweeted_status)
-                newTweet.retweeted_status.user_id_str = tweet.retweeted_status.id_str;
-                newTweet['retweeted_status']['user'] = null;
+                newTweet.retweeted_status = _.clone(tweet.retweeted_status);
                 newTweet['retweeted_status'] = cleanupTweet(tweet['retweeted_status']);
             }
             return newTweet;
         }
 
+        // Set up data flows between EventStreams and Properties
         this.twitterEvents = networkEvents;
-        this.twitterEvents.BaconName = "twitterEvents";
-        this.deletedTweets = this.twitterEvents.filter(filterTweetDeletions)
-        this.deletedTweets.BaconName = "deletedTweets";
-        
+        this.deletedTweets = this.twitterEvents.filter(filterTweetDeletions);
 
-        this.postedTweets = new Bacon.Bus()
-        this.postedTweets.BaconName = "postedTweets";
+        this.postedTweets = new Bacon.Bus();
+        this.networkRequests = this.postedTweets.map(postTweet);
 
-        this.networkRequests = this.postedTweets.map(postTweet)
-        this.networkRequests.BaconName = "networkRequests";
-
-        this.onlyTweets = this.twitterEvents.filter(filterTweets)
-        this.onlyTweets.BaconName = "onlyTweets";
+        this.onlyTweets = this.twitterEvents.filter(filterTweets);
         this.tweets = this.onlyTweets
                         .map(cleanupTweet)
-                        .map(cleanupRetweet)
-        this.tweets.BaconName = "tweets";
+                        .map(cleanupRetweet);
         var tweetChanges = this.tweets.map(addItem)
                         .merge(this.deletedTweets.map(removeItem))
-        tweetChanges.BaconName = "tweetChanges";
 
         this.allTweets = tweetChanges.scan([], function(tweets, f) { return f(tweets) })
-        this.allTweets.BaconName = "allTweets";
+        
+        // this.allTweets.log("allTweets");
         // this.allTweets.changes().onValue(storage.writeTweets)
+
+        // Assigning names for Bacon EventStreams and Properties in the BaconProxy
+        this.twitterEvents.BaconName = "twitterEvents";
+        this.deletedTweets.BaconName = "deletedTweets";
+        this.postedTweets.BaconName = "postedTweets";
+        this.networkRequests.BaconName = "networkRequests";
+        this.onlyTweets.BaconName = "onlyTweets";
+        this.tweets.BaconName = "tweets";
+        tweetChanges.BaconName = "tweetChanges";
+        this.allTweets.BaconName = "allTweets";
     }
 
-    function UserListModel(tweetsModel) {
+    function UserListModel(networkEvents) {
         function addItem(newItem) { return function(list) { 
             return _.reject(list, function(item) { return item.id_str === newItem.id_str }).concat([newItem]) 
         }}
         // function removeItem(deletedItem) { return function(list) { return _.reject(list, function(item) { return item.id_str === deletedItem.delete.status.id_str}) }}
         function retrieveItem(id) { return function(list) {return _.find(list, function(item){ return item.id_str === id}) }}
-
-        //FIXME: bad design, side effects at their worst
-        function addNew(updateUserBus, newItem) { return function(list) {
-            if (_.isEqual(_.omit(retrieveItem(newItem.id_str)(list), 'statuses_count'), _.omit(newItem, 'statuses_count'))) {
-                // console.log("nothing changed")
-                return list
+        function addNew(newItem) { 
+            return function(list) {
+                if (_.isEqual(_.omit(retrieveItem(newItem.id_str)(list), 'statuses_count'), _.omit(newItem, 'statuses_count'))) {
+                    // console.log("nothing changed")
+                    return list
+                }
+                else {
+                    // console.log("updating user", newItem.name)
+                    return addItem(newItem)(list)
+                }
             }
-            else {
-                // console.log("updating user", newItem.name)
-                updateUserBus.plug(Bacon.once(newItem))
-                return addItem(newItem)(list)
-            }
-        }}
+        }
         // function filterFriendsLists (message) { return _.has(message, 'friends') }
         function filterEvents (message) { return _.has(message, 'event') }
-        // function getUserInfo (user_id_str) { return {type: "get", url: "https://api.twitter.com/1.1/users/show.json?screen_name=rsarver", data: {user_id: user_id_str} }}
+        function filterFollows (event) { return _.where([event], {'event': 'follow' }) }
+        function getFollower (event) { return _.clone(follow['target']) }
+        function filterDMs (event) { return _.has(event, 'direct_message') }
+        function filterNetworkUserInfo (message) { return _.has(message, 'screen_name'); }
+        
+        function getUserInfo (user_id_str) { 
+            return {
+                type: "get", 
+                url: "https://api.twitter.com/1.1/users/show.json?screen_name=rsarver", 
+                data: { user_id: user_id_str } 
+            };
+        }
 
-        this.twitterEvents = tweetsModel.twitterEvents
-        this.tweets = tweetsModel.onlyTweets
+        this.twitterEvents = networkEvents
         this.retrieveItem = retrieveItem
-        this.updateUser = new Bacon.Bus()
-        this.updateUser.BaconName = "updateUser"
 
-        // this.getUserInfo = new Bacon.Bus()
-        // this.getUserInfo.BaconName = "getUserInfo"
+        this.getUserInfo = new Bacon.Bus()
+        this.getUserInfo.BaconName = "getUserInfo"
+        this.networkRequests = this.getUserInfo.map(getUserInfo)
+        this.networkRequests.BaconName = "networkRequests";
 
-        // this.networkRequests = this.getUserInfo.map(getUserInfo)
-        // this.networkRequests.BaconName = "networkRequests";
-
-        var retweetUserInfo = this.tweets.flatMap(function(tweet){
-            if (tweet.hasOwnProperty('retweeted_status')) return Bacon.once(tweet.retweeted_status.user) // Is a retweet
-            else return Bacon.never();
-        })
-        retweetUserInfo.BaconName = "retweetUserInfo";
-        var tweetUserInfo = this.tweets.map(function(tweet) { return _.clone(tweet['user']) })
-        tweetUserInfo.BaconName = "tweetUserInfo";
+        
         var events = this.twitterEvents.filter(filterEvents)
-        events.BaconName = "events";
-        var followUserInfo = events.filter(function (event) { return _.where([event], {'event': 'follow' }) })
-            .map(function (follow) { return _.clone(follow['target']) })
-        followUserInfo.BaconName = "followUserInfo";
-        var dmUserInfo = this.twitterEvents.filter(function (event) { return _.has(event, 'direct_message') })
-            .flatMap(function (dm){ return Bacon.fromArray([dm.direct_message.sender, dm.direct_message.recipient]) })
-        dmUserInfo.BaconName = "dmUserInfo";
-
-        this.userAdded = followUserInfo.merge(tweetUserInfo)
-                            .merge(retweetUserInfo)
+        var followUserInfo = events.filter(filterFollows)
+            .map(getFollower)
+        
+        var dmUserInfo = this.twitterEvents.filter(filterDMs) 
+            .flatMap(function (dm){ 
+                return Bacon.fromArray([dm.direct_message.sender, dm.direct_message.recipient]) 
+            })
+        
+        var userInfoPackets = networkEvents.filter(filterNetworkUserInfo)
+        this.userAdded = followUserInfo
+                            .merge(userInfoPackets)
                             .merge(dmUserInfo)
-        this.userAdded.BaconName = "userAdded"
-
-        //FIXME: design of addNew hides the fact that new items are pushed to updateUser
-        this.userChanges = this.userAdded.map(addNew, this.updateUser)
-        this.userChanges.BaconName = "userChanges"
+        this.userChanges = this.userAdded.map(addNew)
         this.allUsers = this.userChanges.scan([], function(users, f) { return f(users) })
+
+        events.BaconName = "events";
+        followUserInfo.BaconName = "followUserInfo";
+        dmUserInfo.BaconName = "dmUserInfo";
+        this.userAdded.BaconName = "userAdded";
+        this.userChanges.BaconName = "userChanges";
         this.allUsers.BaconName = "allUsers"
-        // this.allUsers.log("user")
     }
 
-    function DMListModel(tweetsModel) {
-        // function matchConversation(peer_id, message) { return message.sender_id_str === peer_id || message.recipient_id_str === peer_id }
+    function DMListModel(networkEvents) {
         function addPeer(message) {
             var peer_id = isOwnID(message.sender_id_str) ? message.recipient_id_str : message.sender_id_str
             return _.extend(_.clone(message), {peer_id: peer_id})
@@ -467,129 +183,192 @@ $(function() {
             }).concat([newMessage]) 
         } }
         function notOwnMessage(message) { return !isOwnID(message.sender_id_str) }
-        // function addMessage(newMessage) { return function(list) { return list.concat([ newMessage ]) }}
-        function filterDirectMessages (message) { return _.has(message, 'direct_message') }
+        function filterDirectMessages (message) { return _.has(message, 'direct_message')}
         function unwrap (message) { return message.direct_message }
         function sendMessage(message) {
-            console.log("Seng message", message)
+            console.log("Send message", message)
             var rMessage = _.extend(_.clone(message), {user_id: message.peer_id})
-            return {type: "post", url: "https://api.twitter.com/1.1/direct_messages/new.json", data: _.pick(rMessage, 'user_id', 'text')}
+            return {
+                type: "post", 
+                url: "https://api.twitter.com/1.1/direct_messages/new.json", 
+                data: _.pick(rMessage, 'user_id', 'text')
+            }
         }
+        // Previewing message locally before sending to the API and receiving a reply
         function previewMessage (message) {
             console.log("preview message", message);
             return _.extend(_.clone(message), 
-                    {created_at: moment().format("ddd MMM DD HH:mm:ss Z YYYY"), 
+                    {created_at: null,//moment().format("ddd MMM DD HH:mm:ss Z YYYY"), 
                      sender: {screen_name: "AndriusAuc"}})
         }
 
-        this.twitterEvents = tweetsModel.twitterEvents;
-        // this.twitterEvents.BaconName = "twitterEvents-DM";
+        function newConversationMessage (messageReceived, allMessages) {
+            var peer;
+            if (messageReceived.sender_id_str === messageReceived.peer_id)
+                peer = messageReceived.sender;
+            else
+                peer = messageReceived.recipient;
+            var messagePreview = {
+                peer_id: messageReceived.peer_id,
+                peer: peer, 
+                messagePreview: messageReceived
+            }     
+            return function (list) {
+                return [messagePreview]
+                    // Reject automatically ignores the case when there is no
+                    // previous conversationw with the peer
+                    .concat(_.reject(list, function(item) { 
+                        return item.peer_id === messageReceived.peer_id
+                    }))
+            }
+        }
+        function filterConversation(allMessages, showConversation) {
+            return _.where(allMessages, {peer_id: showConversation.peer_id});
+        }
+
+        // networkEvents.map(".direct_message").log("netevent")
         this.showConversation = new Bacon.Bus();
-        this.showConversation.BaconName = "showConversation";
         this.sendMessages = new Bacon.Bus();
-        this.sendMessages.BaconName = "SendMessages";
-
         this.networkRequests = this.sendMessages.map(sendMessage)
-        this.networkRequests.BaconName = "networkRequests";
 
-        this.messageReceived = this.twitterEvents.filter(filterDirectMessages).map(unwrap).map(addPeer).filter(notOwnMessage)
-                                    .merge(this.sendMessages.map(previewMessage))
-        this.messageReceived.BaconName = "messageReceived";
-        this.messageChanges = this.messageReceived.map(addMessage)
-        this.messageChanges.BaconName = "messageChanges";
-        this.allMessages = this.messageChanges.scan([], function(messages, f) { return f(messages) })
+        var messageReceived = networkEvents
+            .filter(filterDirectMessages)
+            .map(unwrap)
+            .map(addPeer)//.filter(notOwnMessage)
+            .merge(this.sendMessages.map(previewMessage))
+        var messageChanges = messageReceived.map(addMessage)
+        this.allMessages = messageChanges.scan([], function(messages, f) { return f(messages) })
+
+        var conversationChanges = Bacon.combineWith(newConversationMessage, messageReceived, this.allMessages)
+        this.conversations = conversationChanges.scan([], function(conversations, f) { return f(conversations) })
+        this.currentConversation = Bacon.combineWith(
+            filterConversation, 
+            this.allMessages, 
+            this.showConversation.toProperty({peer_id: null})   // The peer_id === null when no conversation is shown
+        );
+
+
+        this.showConversation.BaconName = "showConversation";
+        this.sendMessages.BaconName = "SendMessages";
+        this.networkRequests.BaconName = "networkRequests";
+        messageReceived.BaconName = "messageReceived";
+        messageChanges.BaconName = "messageChanges";
         this.allMessages.BaconName = "allMessages";
     }
 
-    function networkEvents(ws) {
-        var i = 0;
-        // @wsEvents
-        var wsEvents = Bacon.fromEventTarget(ws, "message").map(".data").map(JSON.parse).flatMap( function(e) {
-            i = i + 1;
-            return Bacon.later(i*0, e);
-        })
-        wsEvents.BaconName = "Websocket Events"
-        return wsEvents;
-    }
-    function networkRequests(ws, tweetsModel, usersModel, messagesModel) {
-        var requests = messagesModel.networkRequests
-                            // .merge(usersModel.networkRequests)
-                            .merge(tweetsModel.networkRequests)
-        requests.BaconName = "Requests"
-
-        // requests.map(JSON.stringify).log("request").map(ws.send)
-        requests.map(JSON.stringify).onValue(function(request){
-            ws.send(request);
-        })
-    }
-
     function TwitterApp() {
-        var ws = wsConnection();
-        var netEvents = networkEvents(ws);
+        // Initialize the connection
+        var connection = wsConnection();
+        var netEvents = networkEvents(connection);
+        // Initialise the three models
         var tweetsModel = new TweetListModel(netEvents)
-        var usersModel = new UserListModel(tweetsModel)
-        var messagesModel = new DMListModel(tweetsModel)
+        var usersModel = new UserListModel(netEvents)
+        var messagesModel = new DMListModel(netEvents)
+        var tweetsViewModel = TwitterViews.TweetsListViewModel(tweetsModel, usersModel)
 
-        var hash = Bacon.UI.hash("#/")
-        FilterView($("#filters"), hash)
-        SelectView($("#views"), hash)
-        hash.BaconName = "hash"
-        // var hash = null;
-
-        var selectedList = hash.decode({
+        // The ViewModel values derived from the model
+        var hash = new Bacon.Bus();
+        var hashValue = hash.toProperty("#/");
+        var selectedListLength = hashValue.decode({
             "#/": tweetsModel.allTweets,
-            "#/dm": messagesModel.allMessages,
+            "#/dm": messagesModel.conversations,
             "#/users": usersModel.allUsers
+        }).map(".length")
+        selectedListLength.BaconName = "selectedListLength";
+        var currentlyVisible = hashValue.decode({
+            "#/": "tweets",
+            "#/dm": "conversations",
+            "#/users": "users"
         })
-        selectedList.BaconName = "selectedList";
-        // var selectedList = tweetsModel.allTweets;
 
-        ItemCountView($("#tweet-count"), hash, selectedList)
-        hash.onValue(function (h) {
-            if (h === "#/") TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
-            else if (h === "#/users") UserListView($("#user-list"), usersModel, hash, selectedList)    
-            else ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
+        // The full data ViewModel as it maps to the HTML template
+        var appViewModel = Bacon.combineTemplate({
+            tweets: tweetsViewModel,
+            conversations: messagesModel.conversations,
+            currentConversation: messagesModel.currentConversation,
+            currentConversationId: messagesModel.showConversation.toProperty({peer_id: null}).map(".peer_id"),
+            users: usersModel.allUsers,
+            sectionItemCount: selectedListLength,
+            currentlyVisible: currentlyVisible,
+        }).debounce(1); // Do the debouncing just for the scheduler to avoid firing events too often
+
+        console.debug("Start ractive");
+        var ractive = new Ractive({
+            el: '#twitterApp',
+            template: "#twitterAppTemplate",
+            data: appViewModel,
+            monitorChanges: false,
+        });
+
+        // Need to hook into the bus due to the nature of "Functional" programming
+        // (unidirectional flows)
+        // TODO: better mapping to paradigm of FRP than pushing to Buses
+        ractive.on({
+            "selectList": function(event){
+                hash.push(event.node.hash);
+            },
+            "tweetSend": function(event){
+                event.original.preventDefault();
+                tweetsModel.postedTweets.push({status: this.get("tweetText")});
+            },
+            "showConversation": function(event){
+                var peer_id = event.node.id;
+                messagesModel.showConversation.push({peer_id: peer_id});
+            },
+            "chatSend": function(event){
+                event.original.preventDefault();
+                console.log(event);
+                messagesModel.sendMessages.push({
+                    peer_id: this.get("currentConversationId"),
+                    text: this.get("chatText")
+                })
+            }
         })
-        // TweetListView($("#tweet-list"), tweetsModel, usersModel, hash, selectedList)
-        UserListView($("#user-list"), usersModel, hash, selectedList)
-        ConversationListView($("#conversation-list"), messagesModel, usersModel, hash, selectedList)
-        ChatView($("#message-list"), $("#chat"), messagesModel, usersModel, hash)
+        messagesModel.showConversation.plug(hash.map({peer_id: null}));
 
-        var netRequests = networkRequests(ws, tweetsModel, usersModel, messagesModel)
-        
-        // Plug both complete twitter stream (for follows/unfollows, etc.)
-        // and filtered only tweets - this model should not have to know how to filter for tweets
-        // usersModel.twitterEvents = tweetsModel.twitterEvents
-        // usersModel.tweets.plug(tweetsModel.onlyTweets)
-        // messagesModel.twitterEvents = tweetsModel.twitterEvents
-        // usersModel.twitterEvents.plug(tweetsModel.twitterEvents)
-        // usersModel.tweets.plug(tweetsModel.onlyTweets)
-        // messagesModel.twitterEvents.plug(tweetsModel.twitterEvents)
+        // Plug the network requests back into the same (not necessarily though) connection
+        var netRequests = networkRequests(connection, 
+            tweetsModel.networkRequests, 
+            usersModel.networkRequests, 
+            messagesModel.networkRequests
+        )
     }
 
-    TwitterApp()
-    setTimeout(function(){
-        BaconTracer.drawRelationshipsForce("#graph")    
-    }, 1000)
-    
+
+    // The block that deals with connectivity - hopefully easily swappable with anything else    
     function wsConnection() {
         var ws = new WebSocket("ws://127.0.0.1:6969")
         ws.onopen = function() { console.log("Websocket connection opened"); }
         return ws;
     }
 
-})
+    // Somewhat network specific as to how the connection is turned into an EventStream
+    function networkEvents(ws) {
+        var i = 0;
+        function delayEvent(event) {
+            i = i + 1;
+            return Bacon.later(i*0, event);
+        }
+        // @wsEvents
+        var wsEvents = Bacon.fromEventTarget(ws, "message")
+            .map(".data")
+            .map(JSON.parse)
+            .flatMap(delayEvent)
+        wsEvents.BaconName = "Websocket Events"
+        return wsEvents;
+    }
+    function networkRequests(ws, net1, net2, net3) {
+        var requests = net1.merge(net2).merge(net3)
+        requests.BaconName = "Requests";
+        requests.map(JSON.stringify).onValue(function(request){
+            console.debug("request", request);
+            // ws.send(request);
+        })
+    }
 
+    TwitterApp()
+    // setTimeout(function(){
+    //     BaconTracer.drawRelationshipsForce("#graph")    
+    // }, 1000)
 
-// List of friends of a user, only seen sent at the beginning of the session
-// var friends = twitterEvents.filter(filterFriendsLists)//.log("Friends:");
-// var directMessages = twitterEvents.filter(filterDirectMessages)//.log("DM:");
-// Events include follows, unfollows, favorites, retweets, etc.
-// var events = twitterEvents.filter(filterEvents)//.log("Event:")
-
-//     // A stream of compressed tweets as strings, at the moment just to compare size savings
-//     var compressed = tweets.flatMap(function(v){
-//             return Bacon.fromNodeCallback(zlib.deflate, v)      // deflate using zlib
-//         })
-//         .map(function (b) { return b.toString() })          // convert to a string
-//         .map(".length").log("Zipped length:")
+}).call(this);
