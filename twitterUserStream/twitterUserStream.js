@@ -299,6 +299,7 @@
             data: appViewModel,
             monitorChanges: false,
         });
+        console.log(JSON.stringify(ractive.template));
 
         // Need to hook into the bus due to the nature of "Functional" programming
         // (unidirectional flows)
